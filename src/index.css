@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Jost", system-ui, sans-serif;
+  --color-vino: #B8232B;
+  --color-vino-oscuro: #8E1A21;
+  --color-vino-suave: #F3E3E4;
+  --color-tinta: #1C1A19;
+  --color-texto: #3A3532;
+  --color-gris: #6B6460;
+  --color-linea: #E8E2DD;
+  --color-borde: #DCD3CE;
+  --color-crema: #FAF8F6;
+  --color-arena: #EFE6E1;
+  --color-ok: #2E7D4F;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-crema);
+  color: var(--color-tinta);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-vino);
+  outline-offset: 2px;
+}
+
+.pb-safe {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
