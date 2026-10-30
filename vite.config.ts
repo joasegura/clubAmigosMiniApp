@@ -9,7 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.png', 'brand/apple-touch-icon.png', 'brand/logo.png'],
+      includeAssets: ['favicon.ico', 'favicon.png', 'brand/apple-touch-icon.png', 'brand/logo.png'],
       manifest: {
         name: 'Club Entre amigos',
         short_name: 'Club Entre amigos',
