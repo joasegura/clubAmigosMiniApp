@@ -1,19 +1,21 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import AppLayout from './components/AppLayout'
 import { Loading } from './components/ui'
 import Login from './pages/Login'
 import Feed from './pages/Feed'
-import Ranking from './pages/Ranking'
-import Upload from './pages/Upload'
-import WineDetail from './pages/WineDetail'
-import Profile from './pages/Profile'
-import Admin from './pages/Admin'
 
-function Gate() {
-  const { session, loading } = useAuth()
-  if (loading) return <Loading label="Abriendo el club…" />
-  if (!session) return <Login />
+// El resto de las pantallas se descarga recién cuando se abre
+const Welcome = lazy(() => import('./pages/Welcome'))
+const Ranking = lazy(() => import('./pages/Ranking'))
+const Upload = lazy(() => import('./pages/Upload'))
+const WineDetail = lazy(() => import('./pages/WineDetail'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Admin = lazy(() => import('./pages/Admin'))
+const Legal = lazy(() => import('./pages/Legal'))
+
+function Club() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
@@ -26,6 +28,20 @@ function Gate() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+  )
+}
+
+function Gate() {
+  const { profile } = useAuth()
+  return (
+    <Suspense fallback={<Loading />}>
+      <Routes>
+        {/* Términos y privacidad se pueden leer sin ingresar */}
+        <Route path="terminos" element={<Legal kind="terminos" />} />
+        <Route path="privacidad" element={<Legal kind="privacidad" />} />
+        <Route path="*" element={!profile ? <Login /> : !profile.display_name ? <Welcome /> : <Club />} />
+      </Routes>
+    </Suspense>
   )
 }
 

@@ -27,8 +27,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
-        // Nunca cachear llamadas a Supabase: los datos tienen que estar siempre frescos
-        runtimeCaching: [],
+        // La fuente (solo los alfabetos latinos) también queda disponible sin conexión
+        globPatterns: ['**/*.{js,css,html}', '**/*latin*.woff2'],
       },
     }),
   ],

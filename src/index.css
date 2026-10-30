@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Jost", system-ui, sans-serif;
+  --font-sans: "Jost Variable", system-ui, sans-serif;
   --color-vino: #B8232B;
   --color-vino-oscuro: #8E1A21;
   --color-vino-suave: #F3E3E4;

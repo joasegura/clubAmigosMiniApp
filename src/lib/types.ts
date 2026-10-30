@@ -2,6 +2,8 @@ export type Role = 'socio' | 'admin'
 
 export interface Profile {
   id: string
+  email: string | null
+  /** Vacío hasta que el socio elige cómo lo llamamos (primer ingreso por mail) */
   display_name: string
   avatar_url: string | null
   role: Role
@@ -25,8 +27,17 @@ export interface Wine {
 }
 
 export interface RankedWine extends Wine {
+  /** Promedio real (un voto por socio: su último puntaje) */
   avg_rating: number
   votes: number
+  /** Promedio ponderado usado para ordenar: un vino con pocos votos no salta al primer puesto */
+  score: number
+}
+
+export interface WineSummary {
+  avg: number | null
+  votes: number
+  position: number | null
 }
 
 export interface Tasting {
@@ -41,28 +52,34 @@ export interface Tasting {
   created_at: string
 }
 
+export type PublicProfile = Pick<Profile, 'id' | 'display_name' | 'avatar_url'>
+
 /** Publicación del feed con autor, vino y contadores */
 export interface FeedItem extends Tasting {
-  profile: Pick<Profile, 'id' | 'display_name' | 'avatar_url'> | null
+  profile: PublicProfile | null
   wine: Wine | null
-  cheers: { count: number }[]
-  comments: { count: number }[]
+  cheer_count: number
+  comment_count: number
 }
 
-export interface Comment {
+export interface CommentRow {
   id: string
   tasting_id: string
   user_id: string
   body: string
   hidden: boolean
   created_at: string
-  profile: Pick<Profile, 'id' | 'display_name' | 'avatar_url'> | null
+}
+
+export interface Comment extends CommentRow {
+  profile: PublicProfile | null
 }
 
 export interface Report {
   id: string
   target_type: 'tasting' | 'comment'
   target_id: string
+  reporter_id: string
   reason: string | null
   status: 'pendiente' | 'oculto' | 'mantenido'
   created_at: string

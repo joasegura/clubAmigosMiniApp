@@ -4,88 +4,62 @@ App web (PWA) del club de amigos de la vinoteca **Entre amigos**. Los socios sub
 
 Desarrollado por ATOM Soluciones IT.
 
-## Qué incluye el MVP
+> **Versión demo (sin servidor).** Esta versión es para mostrarle la app al cliente: no usa base de datos ni login real. Los datos se guardan **en el navegador de cada dispositivo** (localStorage y, para las fotos, IndexedDB) y arranca con un club de ejemplo cargado. Lo que carga una persona no lo ven las demás.
+
+## Qué incluye
 
 | Pantalla | Funciones |
 |---|---|
-| Ingreso | Google o link al mail (sin contraseña) |
+| Ingreso | "Continuar con Google" o código de 6 números por mail (simulados: el código se muestra en pantalla). Primer ingreso: el socio elige su nombre. Acceso de demo como la vinoteca |
 | Inicio | Vino del mes con "Lo quiero", feed de publicaciones, brindis, comentarios, reportar |
-| Ranking | Puntaje promedio por vino del catálogo, filtros por cepa y precio, "el más tomado del mes" |
-| Subir vino | Buscar en el catálogo o cargar un vino externo, foto (se comprime antes de subir), puntaje 1–5 copas, comentario y ocasión |
-| Ficha del vino | Fotos del club, puntaje, precio y stock, opiniones, "Lo tomé", "Lo quiero" por WhatsApp, guardar en "Quiero probar" |
-| Perfil | Mis vinos, estadísticas, lista "Quiero probar", editar nombre, cerrar sesión |
-| Panel de la vinoteca | Números de la semana (socios nuevos, vinos subidos, toques en "Lo quiero"), elegir el vino del mes, moderar reportes, catálogo con precio y stock |
+| Ranking | Un voto por socio (su último puntaje), orden por promedio ponderado, filtros por cepa y precio, "el más tomado del mes" |
+| Subir vino | Buscar en el catálogo (sin importar tildes) o cargar un vino externo, foto (se comprime antes de guardar), puntaje 1–5 copas, comentario y ocasión |
+| Ficha del vino | Fotos del club, puntaje, puesto en el ranking, precio y stock, opiniones, "Lo tomé", "Lo quiero" por WhatsApp, guardar en "Quiero probar" |
+| Perfil | Mis vinos, estadísticas, lista "Quiero probar", editar nombre, términos y privacidad, **Reiniciar demo** |
+| Panel de la vinoteca | Números de la semana, vino del mes, moderar reportes, volver a mostrar lo oculto, catálogo con precio, stock, foto y visibilidad, **importar catálogo desde CSV** |
+| Términos y privacidad | Textos modelo en `/terminos` y `/privacidad` (completar datos de la vinoteca y validarlos) |
 
-**Stack:** React + Vite + TypeScript + Tailwind, Supabase (base de datos, login, fotos), Vercel. Se instala desde el navegador, sin pasar por las tiendas de apps.
+**Stack:** React + Vite + TypeScript + Tailwind, PWA, Vercel. Se instala desde el navegador, sin pasar por las tiendas de apps.
 
 **Reglas importantes**
 - Los vinos externos quedan en el perfil del socio pero no cuentan para el ranking.
-- Todas las reglas de permisos están en la base de datos (Row Level Security). Un socio no puede cambiar precios, hacerse admin, publicar a nombre de otro ni ver lo que ocultó la vinoteca.
+- Subir el mismo vino varias veces no suma votos: cuenta el último puntaje de cada socio.
+- Las reglas de permisos (un socio no puede borrar lo de otro, entrar al panel, cambiar precios, etc.) están en `src/lib/api.ts`, igual que las aplicaría el servidor.
 
----
+## Cómo mostrar la demo
 
-## Puesta en producción
-
-### 1. Supabase
-1. Crear un proyecto en [supabase.com](https://supabase.com). Elegir la región **São Paulo**, que es la más cercana.
-2. En **SQL Editor**, pegar y correr completo `supabase/migrations/20261024000000_club_inicial.sql`.
-3. Opcional: correr `supabase/seed.sql` para cargar el **catálogo de prueba**. Son 14 vinos inventados, todos con `nexus_id` que empieza con `PRUEBA-`.
-4. En **Project Settings → API**, copiar la `Project URL` y la `anon public key`.
-
-### 2. Login
-En **Authentication → URL Configuration**:
-- **Site URL:** el dominio final (por ejemplo `https://club.entreamigos.com.ar`).
-- **Redirect URLs:** agregar ese dominio y `http://localhost:5173` para desarrollo.
-
-**Google**
-1. En [Google Cloud Console](https://console.cloud.google.com/), ir a APIs y servicios → Credenciales y crear un **ID de cliente OAuth** de tipo *Aplicación web*.
-2. En URI de redirección autorizado, cargar `https://<tu-proyecto>.supabase.co/auth/v1/callback`.
-3. En Supabase, ir a **Authentication → Providers → Google**, activarlo y pegar el Client ID y el Secret.
-4. Configurar la pantalla de consentimiento con el nombre "Club Entre amigos" y el logo, y publicarla (salir del modo prueba).
-
-**Mail con link**
-- Ya viene activado. El mail que manda Supabase por defecto tiene un límite bajo de envíos por hora, así que para producción hay que configurar un SMTP propio en **Authentication → Emails → SMTP Settings**. Resend o Brevo tienen planes gratis que alcanzan.
-- Conviene traducir la plantilla "Magic Link" al español en **Authentication → Emails → Templates**.
-
-### 3. Primer administrador
-Entrar a la app una vez con la cuenta de la vinoteca y después correr en el SQL Editor:
-```sql
-update public.profiles set role = 'admin'
-where id = (select id from auth.users where email = 'MAIL-DE-LA-VINOTECA');
-```
-Desde ese momento, en el Perfil aparece el botón **Panel de la vinoteca**.
-
-### 4. Vercel
-1. Importar el repo en [vercel.com](https://vercel.com). Detecta Vite solo.
-2. En **Environment Variables**, cargar:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-   - `VITE_WHATSAPP_NUMBER`: el WhatsApp de la vinoteca, solo números con código de país (ej. `5493772123456`)
-3. Hacer el deploy y, si se quiere, conectar un dominio propio. Si se conecta, actualizar el Site URL en Supabase.
-
-### 5. Difusión
-Imprimir un QR con el link de la app para el mostrador, las bolsas y los tickets. En el celular, el socio entra y elige "Agregar a pantalla de inicio".
-
----
+1. Entrar con un mail cualquiera (el código aparece en pantalla) o con "Continuar con Google".
+2. Subir un vino con foto, brindar, comentar, guardar en "Quiero probar".
+3. Cerrar sesión y entrar con **"Entrar como la vinoteca"** para mostrar el panel: estadísticas, moderación, vino del mes, importación de CSV.
+4. Antes de cada presentación: **Perfil → Reiniciar demo** deja todo como nuevo.
 
 ## Desarrollo local
 ```bash
 npm install
-cp .env.example .env    # completar con los datos de Supabase
+cp .env.example .env    # completar el WhatsApp de la vinoteca
 npm run dev             # http://localhost:5173
 npm run build           # compila para producción
+npm run lint
 ```
 
-## Conexión con Nexus (siguiente etapa)
-La app lee el catálogo de la tabla `wines` (`source = 'catalogo'`). Todo el acceso a datos está centralizado en `src/lib/api.ts`. Para conectar Nexus:
-1. Hacer una sincronización (Edge Function programada o webhook desde Nexus) que haga **upsert por `nexus_id`** de nombre, bodega, cepa, año, precio, `in_stock` y foto.
-2. Borrar los datos de prueba con `delete from public.wines where nexus_id like 'PRUEBA-%';`.
-3. Opcional: ocultar del panel admin la edición manual de precio y stock, porque pasarían a venir de Nexus.
+## Publicar en Vercel
+1. Importar el repo en [vercel.com](https://vercel.com). Detecta Vite solo.
+2. En **Environment Variables**, cargar `VITE_WHATSAPP_NUMBER`: el WhatsApp de la vinoteca, solo números con código de país (ej. `5493772123456`). Sin esto, "Lo quiero" abre WhatsApp sin destinatario y el panel lo avisa.
+3. Hacer el deploy. `vercel.json` ya trae los headers de seguridad y el caché de los archivos.
 
-Las pantallas no cambian.
+En el celular, el socio entra al link y elige "Agregar a pantalla de inicio".
+
+## Importar el catálogo (CSV)
+Desde el panel de la vinoteca → **Importar CSV**. Acepta coma o punto y coma (Excel en español) y precios como `18.500,50`. Columnas: `codigo, nombre, bodega, cepa, año, region, precio, stock` (solo `nombre` es obligatoria). Si el código ya existe, el vino se actualiza. En el panel se puede descargar una plantilla.
+
+## Pasar a producción (siguiente etapa)
+Todo el acceso a datos está en `src/lib/api.ts`. Para tener datos compartidos entre socios y login real, hay que reemplazar ese archivo por uno que hable con un backend, manteniendo las mismas funciones: las pantallas no cambian.
+
+En `supabase/` quedó un esquema inicial de Supabase (tablas, permisos y fotos). Antes de usarlo hay que pasarle las reglas que hoy tiene la demo: un voto por socio en el ranking, promedio ponderado, mes en hora de Argentina, límite de largo del nombre, socios sin `image_url` en vinos externos e índices. Para el login real conviene el código de 6 números por mail (el link no funciona bien con la app instalada en iPhone) y un SMTP propio.
 
 ## Etapa 2 (ideas ya conversadas)
-- Ingreso con código por WhatsApp (requiere Twilio o la API de Meta).
+- Conexión con Nexus (sincronizar catálogo, precio y stock por código).
+- Ingreso con código por WhatsApp.
 - Eventos y catas con confirmación de asistencia y puntaje de los vinos de la cata.
 - Insignias ("probó 10 malbecs", "explorador de 5 bodegas").
 - Reserva para retirar que entre como pedido en Nexus, en lugar de WhatsApp.

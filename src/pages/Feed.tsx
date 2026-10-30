@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { getClubSettings, getFeed, getMyCheers, getWine, logWantClick } from '../lib/api'
+import { getFeed, getMyCheers, getWineOfMonth, logWantClick } from '../lib/api'
 import { formatPrice, whatsappLink, wineSubtitle } from '../lib/format'
 import type { FeedItem, Wine } from '../lib/types'
 import TastingCard from '../components/TastingCard'
@@ -11,6 +11,8 @@ const PAGE = 15
 
 export default function Feed() {
   const { profile } = useAuth()
+  // Depender del id (no del objeto) evita recargar el feed y perder lo ya cargado
+  const profileId = profile?.id
   const [items, setItems] = useState<FeedItem[]>([])
   const [cheers, setCheers] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(0)
@@ -21,12 +23,12 @@ export default function Feed() {
 
   const load = useCallback(
     async (p: number) => {
-      if (!profile) return
+      if (!profileId) return
       setLoading(true)
       setError('')
       try {
         const data = await getFeed(p, PAGE)
-        const mine = await getMyCheers(profile.id, data.map((d) => d.id))
+        const mine = await getMyCheers(profileId, data.map((d) => d.id))
         setItems((prev) => (p === 0 ? data : [...prev, ...data]))
         setCheers((prev) => new Set([...(p === 0 ? [] : prev), ...mine]))
         setMore(data.length === PAGE)
@@ -37,17 +39,13 @@ export default function Feed() {
         setLoading(false)
       }
     },
-    [profile],
+    [profileId],
   )
 
   useEffect(() => {
     void load(0)
-    getClubSettings()
-      .then(async (s) => {
-        if (!s?.wine_of_month_id) return
-        const wine = await getWine(s.wine_of_month_id)
-        if (wine) setWom({ wine, note: s.wine_of_month_note })
-      })
+    getWineOfMonth()
+      .then(setWom)
       .catch(() => undefined)
   }, [load])
 
@@ -81,7 +79,7 @@ export default function Feed() {
                     href={whatsappLink(wom.wine)}
                     target="_blank"
                     rel="noopener"
-                    onClick={() => profile && logWantClick(profile.id, wom.wine.id)}
+                    onClick={() => profileId && logWantClick(profileId, wom.wine.id)}
                     className="flex h-10 items-center rounded-full bg-vino px-4 text-sm font-medium text-white no-underline"
                   >
                     Lo quiero

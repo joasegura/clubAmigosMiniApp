@@ -1,231 +1,593 @@
 /**
  * Todo el acceso a datos de la app pasa por acá.
  *
- * Catálogo: la app lee los vinos de la tabla `wines` (source = 'catalogo').
- * Hoy esa tabla tiene datos de prueba; cuando se conecte Nexus, una
- * sincronización va a hacer upsert por `nexus_id` (nombre, precio, stock)
- * y el resto de la app no cambia.
+ * DEMO: los datos se guardan en este dispositivo (ver `store.ts`). Las reglas
+ * de permisos que en producción va a aplicar el servidor (quién ve qué, quién
+ * puede editar) están replicadas acá, así la demo se comporta igual. Para
+ * conectar el backend real alcanza con reemplazar este archivo manteniendo
+ * las mismas funciones; las pantallas no cambian.
  */
-import { supabase } from './supabase'
-import { compressImage } from './format'
-import type { ClubSettings, Comment, FeedItem, Profile, RankedWine, Report, Tasting, WeekStats, Wine } from './types'
+import { deletePhoto, getDB, getSessionUserId, mutate, savePhoto, setSessionUserId, uid } from './store'
+import { compressImage, normalizeText } from './format'
+import { parseCatalogCsv } from './csv'
+import { SHOP_ID } from './seed'
+import type {
+  ClubSettings,
+  Comment,
+  CommentRow,
+  FeedItem,
+  Profile,
+  PublicProfile,
+  RankedWine,
+  Report,
+  Tasting,
+  WeekStats,
+  Wine,
+  WineSummary,
+} from './types'
 
-const FEED_SELECT =
-  '*, profile:profiles(id, display_name, avatar_url), wine:wines(*), cheers:tasting_cheers(count), comments:tasting_comments(count)'
+const DAY = 86400_000
+/**
+ * Promedio ponderado del ranking: cada vino arranca con 3 votos "fantasma" de
+ * 3 copas (el medio de la escala). Con pocos votos el puntaje queda cerca de 3;
+ * con muchos, se acerca al promedio real. Así, a igual promedio, más votos
+ * siempre suben, y un único 5 no salta al primer puesto.
+ */
+const RANKING_PRIOR_VOTES = 3
+const RANKING_PRIOR_RATING = 3
 
-/** Lanza el error de Supabase o devuelve los datos (sin error, las listas nunca son null) */
-function check<T>(res: { data: T; error: { message: string } | null }): NonNullable<T> {
-  if (res.error) throw new Error(res.error.message)
-  return res.data as NonNullable<T>
+const monthKey = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Argentina/Buenos_Aires',
+  year: 'numeric',
+  month: '2-digit',
+})
+
+// ---------- Permisos (lo que en producción hace el servidor) ----------
+
+interface Viewer {
+  id: string | null
+  admin: boolean
+}
+
+function viewer(): Viewer {
+  const id = getSessionUserId()
+  const p = id ? getDB().profiles.find((x) => x.id === id) : undefined
+  return { id: p?.id ?? null, admin: p?.role === 'admin' }
+}
+
+function requireUser(userId?: string): Viewer & { id: string } {
+  const v = viewer()
+  if (!v.id) throw new Error('Tenés que ingresar al club')
+  if (userId && userId !== v.id) throw new Error('No podés hacer esto en nombre de otro socio')
+  return v as Viewer & { id: string }
+}
+
+function requireAdmin() {
+  const v = requireUser()
+  if (!v.admin) throw new Error('Solo para la vinoteca')
+  return v
+}
+
+const canSeeWine = (w: Wine, v: Viewer) => w.active || w.created_by === v.id || v.admin
+const canSeeTasting = (t: Tasting, v: Viewer) => !t.hidden || t.user_id === v.id || v.admin
+const canSeeComment = (c: CommentRow, v: Viewer) => !c.hidden || c.user_id === v.id || v.admin
+
+// ---------- Armado de respuestas ----------
+
+function publicProfile(id: string): PublicProfile | null {
+  const p = getDB().profiles.find((x) => x.id === id)
+  return p ? { id: p.id, display_name: p.display_name, avatar_url: p.avatar_url } : null
+}
+
+function visibleWine(id: string, v: Viewer): Wine | null {
+  const w = getDB().wines.find((x) => x.id === id)
+  return w && canSeeWine(w, v) ? { ...w } : null
+}
+
+function toFeedItem(t: Tasting, v: Viewer): FeedItem {
+  const db = getDB()
+  return {
+    ...t,
+    profile: publicProfile(t.user_id),
+    wine: visibleWine(t.wine_id, v),
+    cheer_count: db.cheers.filter((c) => c.tasting_id === t.id).length,
+    comment_count: db.comments.filter((c) => c.tasting_id === t.id && canSeeComment(c, v)).length,
+  }
+}
+
+function toComment(c: CommentRow): Comment {
+  return { ...c, profile: publicProfile(c.user_id) }
+}
+
+const newestFirst = <T extends { created_at: string }>(a: T, b: T) => b.created_at.localeCompare(a.created_at)
+
+// ---------- Sesión (demo) ----------
+
+export function getCurrentProfile(): Profile | null {
+  const id = getSessionUserId()
+  const p = id ? getDB().profiles.find((x) => x.id === id) : undefined
+  return p ? { ...p } : null
+}
+
+/** Ingresa con un mail; si no existe el socio, lo crea (como haría el login real) */
+export async function signInDemo(email: string, displayName = ''): Promise<Profile> {
+  const clean = email.trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) throw new Error('Revisá el mail, parece que tiene un error')
+  const profile = mutate((db) => {
+    let p = db.profiles.find((x) => x.email === clean)
+    if (!p) {
+      p = {
+        id: uid(),
+        email: clean,
+        display_name: displayName.slice(0, 40),
+        avatar_url: null,
+        role: 'socio',
+        created_at: new Date().toISOString(),
+      }
+      db.profiles.push(p)
+    }
+    return p
+  })
+  setSessionUserId(profile.id)
+  return { ...profile }
+}
+
+export async function signInAsShop(): Promise<Profile> {
+  const shop = getDB().profiles.find((p) => p.id === SHOP_ID)
+  if (!shop) throw new Error('No está el usuario de la vinoteca en la demo')
+  setSessionUserId(shop.id)
+  return { ...shop }
+}
+
+export async function signOutDemo() {
+  setSessionUserId(null)
 }
 
 // ---------- Perfil ----------
 
 export async function getProfile(id: string): Promise<Profile | null> {
-  return check(await supabase.from('profiles').select('*').eq('id', id).maybeSingle())
+  const p = getDB().profiles.find((x) => x.id === id)
+  return p ? { ...p } : null
 }
 
 export async function updateDisplayName(id: string, display_name: string) {
-  check(await supabase.from('profiles').update({ display_name }).eq('id', id))
+  requireUser(id)
+  const name = display_name.trim()
+  if (name.length < 1 || name.length > 40) throw new Error('El nombre tiene que tener entre 1 y 40 letras')
+  mutate((db) => {
+    const p = db.profiles.find((x) => x.id === id)
+    if (p) p.display_name = name
+  })
 }
 
 // ---------- Catálogo ----------
 
 export async function searchCatalog(q: string, limit = 8): Promise<Wine[]> {
-  let query = supabase.from('wines').select('*').eq('source', 'catalogo').eq('active', true).order('name').limit(limit)
-  const term = q.trim().replace(/[%,()]/g, ' ')
-  if (term) {
-    const words = term.split(/\s+/).filter(Boolean)
-    for (const w of words) {
-      query = query.or(`name.ilike.%${w}%,winery.ilike.%${w}%,varietal.ilike.%${w}%`)
-    }
-  }
-  return check(await query)
+  const words = normalizeText(q).split(/\s+/).filter(Boolean)
+  return getDB()
+    .wines.filter((w) => w.source === 'catalogo' && w.active)
+    .filter((w) => {
+      const haystack = normalizeText([w.name, w.winery, w.varietal, w.region, w.vintage].filter(Boolean).join(' '))
+      return words.every((word) => haystack.includes(word))
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    .slice(0, limit)
+    .map((w) => ({ ...w }))
 }
 
 export async function listCatalog(): Promise<Wine[]> {
-  return check(await supabase.from('wines').select('*').eq('source', 'catalogo').order('name'))
+  requireAdmin()
+  return getDB()
+    .wines.filter((w) => w.source === 'catalogo')
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    .map((w) => ({ ...w }))
 }
 
 export async function getWine(id: string): Promise<Wine | null> {
-  return check(await supabase.from('wines').select('*').eq('id', id).maybeSingle())
+  return visibleWine(id, viewer())
 }
 
 export async function createExternalWine(userId: string, w: Pick<Wine, 'name' | 'winery' | 'varietal' | 'vintage'>): Promise<Wine> {
-  return check(
-    await supabase
-      .from('wines')
-      .insert({ ...w, source: 'externo', created_by: userId, in_stock: false })
-      .select('*')
-      .single(),
-  )
+  requireUser(userId)
+  const name = w.name.trim().slice(0, 120)
+  if (!name) throw new Error('Falta el nombre del vino')
+  const vintage = w.vintage && w.vintage >= 1900 && w.vintage <= 2100 ? w.vintage : null
+  const wine: Wine = {
+    id: uid(),
+    nexus_id: null,
+    name,
+    winery: w.winery?.slice(0, 120) || null,
+    varietal: w.varietal?.slice(0, 60) || null,
+    vintage,
+    region: null,
+    price: null,
+    in_stock: false,
+    image_url: null,
+    source: 'externo',
+    active: true,
+    created_by: userId,
+  }
+  mutate((db) => db.wines.push(wine))
+  return { ...wine }
 }
 
 export async function saveCatalogWine(w: Partial<Wine> & { name: string }) {
-  if (w.id) {
-    const { id, ...rest } = w
-    check(await supabase.from('wines').update(rest).eq('id', id))
-  } else {
-    check(await supabase.from('wines').insert({ ...w, source: 'catalogo' }))
-  }
+  requireAdmin()
+  const name = w.name.trim().slice(0, 120)
+  if (!name) throw new Error('Falta el nombre del vino')
+  if (w.price != null && (!Number.isFinite(w.price) || w.price < 0)) throw new Error('El precio no es válido')
+  if (w.vintage != null && (w.vintage < 1900 || w.vintage > 2100)) throw new Error('El año no es válido')
+  mutate((db) => {
+    const existing = w.id ? db.wines.find((x) => x.id === w.id) : undefined
+    if (existing) {
+      const { id: _id, source: _source, created_by: _createdBy, ...rest } = w
+      Object.assign(existing, rest, { name })
+    } else {
+      db.wines.push({
+        nexus_id: null,
+        winery: null,
+        varietal: null,
+        vintage: null,
+        region: null,
+        price: null,
+        in_stock: true,
+        image_url: null,
+        active: true,
+        ...w,
+        id: uid(),
+        name,
+        source: 'catalogo',
+        created_by: null,
+      })
+    }
+  })
+}
+
+/** Carga o actualiza el catálogo desde un CSV. Actualiza por código (o por nombre + bodega + año si no hay código). */
+export async function importCatalogCsv(text: string): Promise<{ created: number; updated: number; skipped: number }> {
+  requireAdmin()
+  const { rows, skipped } = parseCatalogCsv(text)
+  if (!rows.length) throw new Error('No encontramos vinos en el archivo')
+  const key = (w: Pick<Wine, 'name' | 'winery' | 'vintage'>) => normalizeText(`${w.name}|${w.winery ?? ''}|${w.vintage ?? ''}`)
+  let created = 0
+  let updated = 0
+  mutate((db) => {
+    for (const row of rows) {
+      const catalog = db.wines.filter((w) => w.source === 'catalogo')
+      const existing = row.nexus_id ? catalog.find((w) => w.nexus_id === row.nexus_id) : catalog.find((w) => key(w) === key(row))
+      if (existing) {
+        Object.assign(existing, row, { active: true })
+        updated++
+      } else {
+        db.wines.push({ ...row, id: uid(), image_url: null, source: 'catalogo', active: true, created_by: null })
+        created++
+      }
+    }
+  })
+  return { created, updated, skipped }
 }
 
 // ---------- Ranking ----------
 
-export async function getRanking(): Promise<RankedWine[]> {
-  const data = check(
-    await supabase.from('wine_ranking').select('*').order('avg_rating', { ascending: false }).order('votes', { ascending: false }),
-  ) as RankedWine[]
-  return data.map((w) => ({ ...w, avg_rating: Number(w.avg_rating), votes: Number(w.votes) }))
+/** Último puntaje visible de cada socio por vino: subir el mismo vino muchas veces no suma votos */
+function latestVotes(): Map<string, number[]> {
+  const latest = new Map<string, Tasting>()
+  for (const t of getDB().tastings) {
+    if (t.hidden) continue
+    const k = `${t.wine_id}:${t.user_id}`
+    const prev = latest.get(k)
+    if (!prev || t.created_at > prev.created_at) latest.set(k, t)
+  }
+  const byWine = new Map<string, number[]>()
+  for (const t of latest.values()) byWine.set(t.wine_id, [...(byWine.get(t.wine_id) ?? []), t.rating])
+  return byWine
 }
 
+function computeRanking(): RankedWine[] {
+  const votes = latestVotes()
+  const catalog = getDB().wines.filter((w) => w.source === 'catalogo' && w.active && votes.has(w.id))
+  return catalog
+    .map((w) => {
+      const rs = votes.get(w.id)!
+      const sum = rs.reduce((s, r) => s + r, 0)
+      return {
+        ...w,
+        avg_rating: sum / rs.length,
+        votes: rs.length,
+        score: (sum + RANKING_PRIOR_VOTES * RANKING_PRIOR_RATING) / (rs.length + RANKING_PRIOR_VOTES),
+      }
+    })
+    .sort((a, b) => b.score - a.score || b.votes - a.votes || a.name.localeCompare(b.name, 'es'))
+}
+
+export async function getRanking(): Promise<RankedWine[]> {
+  return computeRanking()
+}
+
+/** Puntaje, votos y puesto en el ranking de un vino, en una sola consulta */
+export async function getWineSummary(wineId: string): Promise<WineSummary> {
+  const rs = latestVotes().get(wineId) ?? []
+  const idx = computeRanking().findIndex((w) => w.id === wineId)
+  return {
+    avg: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
+    votes: rs.length,
+    position: idx >= 0 ? idx + 1 : null,
+  }
+}
+
+/** El más tomado del mes en curso (mes calendario de Argentina), contando socios distintos */
 export async function getMostLoggedThisMonth(): Promise<{ wine_id: string; name: string; winery: string | null; total: number } | null> {
-  const data = check(await supabase.rpc('most_logged_this_month'))
-  return (data as { wine_id: string; name: string; winery: string | null; total: number }[])?.[0] ?? null
+  const db = getDB()
+  const thisMonth = monthKey.format(new Date())
+  const counts = new Map<string, { users: Set<string>; last: string }>()
+  for (const t of db.tastings) {
+    if (t.hidden || monthKey.format(new Date(t.created_at)) !== thisMonth) continue
+    const w = db.wines.find((x) => x.id === t.wine_id)
+    if (!w || w.source !== 'catalogo' || !w.active) continue
+    const c = counts.get(w.id) ?? { users: new Set<string>(), last: '' }
+    c.users.add(t.user_id)
+    if (t.created_at > c.last) c.last = t.created_at
+    counts.set(w.id, c)
+  }
+  const best = [...counts.entries()].sort((a, b) => b[1].users.size - a[1].users.size || b[1].last.localeCompare(a[1].last))[0]
+  if (!best) return null
+  const w = db.wines.find((x) => x.id === best[0])!
+  return { wine_id: w.id, name: w.name, winery: w.winery, total: best[1].users.size }
 }
 
 // ---------- Publicaciones ----------
 
 export async function getFeed(page = 0, pageSize = 15): Promise<FeedItem[]> {
+  const v = viewer()
   const from = page * pageSize
-  return check(
-    await supabase.from('tastings').select(FEED_SELECT).eq('hidden', false).order('created_at', { ascending: false }).range(from, from + pageSize - 1),
-  ) as unknown as FeedItem[]
+  return getDB()
+    .tastings.filter((t) => !t.hidden)
+    .sort(newestFirst)
+    .slice(from, from + pageSize)
+    .map((t) => toFeedItem(t, v))
 }
 
 export async function getWineTastings(wineId: string): Promise<FeedItem[]> {
-  return check(
-    await supabase.from('tastings').select(FEED_SELECT).eq('wine_id', wineId).eq('hidden', false).order('created_at', { ascending: false }).limit(50),
-  ) as unknown as FeedItem[]
+  const v = viewer()
+  return getDB()
+    .tastings.filter((t) => t.wine_id === wineId && !t.hidden)
+    .sort(newestFirst)
+    .slice(0, 50)
+    .map((t) => toFeedItem(t, v))
 }
 
 export async function getUserTastings(userId: string): Promise<FeedItem[]> {
-  return check(
-    await supabase.from('tastings').select(FEED_SELECT).eq('user_id', userId).order('created_at', { ascending: false }),
-  ) as unknown as FeedItem[]
+  const v = viewer()
+  return getDB()
+    .tastings.filter((t) => t.user_id === userId && canSeeTasting(t, v))
+    .sort(newestFirst)
+    .map((t) => toFeedItem(t, v))
 }
 
 export async function getTasting(id: string): Promise<FeedItem | null> {
-  return check(await supabase.from('tastings').select(FEED_SELECT).eq('id', id).maybeSingle()) as unknown as FeedItem | null
+  const v = viewer()
+  const t = getDB().tastings.find((x) => x.id === id)
+  return t && canSeeTasting(t, v) ? toFeedItem(t, v) : null
+}
+
+/** Último puntaje que el socio le dio a un vino (para avisarle que cuenta el último) */
+export async function getMyLastRating(userId: string, wineId: string): Promise<number | null> {
+  const mine = getDB()
+    .tastings.filter((t) => t.user_id === userId && t.wine_id === wineId && !t.hidden)
+    .sort(newestFirst)
+  return mine[0]?.rating ?? null
 }
 
 export async function uploadPhoto(userId: string, file: File): Promise<string> {
+  requireUser(userId)
   const blob = await compressImage(file)
-  const path = `${userId}/${crypto.randomUUID()}.jpg`
-  const { error } = await supabase.storage.from('fotos').upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' })
-  if (error) throw new Error(error.message)
+  const path = `${userId}/${uid()}.jpg`
+  await savePhoto(path, blob)
   return path
 }
 
 export async function createTasting(t: Pick<Tasting, 'wine_id' | 'rating' | 'comment' | 'occasion' | 'photo_path'> & { user_id: string }) {
-  return check(await supabase.from('tastings').insert(t).select('id').single())
+  const v = requireUser(t.user_id)
+  if (!Number.isInteger(t.rating) || t.rating < 1 || t.rating > 5) throw new Error('El puntaje va de 1 a 5 copas')
+  if (!visibleWine(t.wine_id, v)) throw new Error('No encontramos ese vino')
+  if (t.photo_path && !t.photo_path.startsWith(`${v.id}/`)) throw new Error('La foto no es tuya')
+  const tasting: Tasting = {
+    id: uid(),
+    user_id: v.id,
+    wine_id: t.wine_id,
+    rating: t.rating,
+    comment: t.comment?.slice(0, 600) || null,
+    occasion: t.occasion?.slice(0, 40) || null,
+    photo_path: t.photo_path,
+    hidden: false,
+    created_at: new Date().toISOString(),
+  }
+  mutate((db) => db.tastings.push(tasting))
+  return { id: tasting.id }
 }
 
 export async function deleteTasting(id: string) {
-  check(await supabase.from('tastings').delete().eq('id', id))
+  const v = requireUser()
+  const t = getDB().tastings.find((x) => x.id === id)
+  if (!t) return
+  if (t.user_id !== v.id && !v.admin) throw new Error('Solo podés borrar tus publicaciones')
+  mutate((db) => {
+    const commentIds = new Set(db.comments.filter((c) => c.tasting_id === id).map((c) => c.id))
+    db.tastings = db.tastings.filter((x) => x.id !== id)
+    db.cheers = db.cheers.filter((c) => c.tasting_id !== id)
+    db.comments = db.comments.filter((c) => c.tasting_id !== id)
+    db.reports = db.reports.filter(
+      (r) => !(r.target_type === 'tasting' && r.target_id === id) && !(r.target_type === 'comment' && commentIds.has(r.target_id)),
+    )
+  })
+  await deletePhoto(t.photo_path)
 }
 
 // ---------- Brindis y comentarios ----------
 
 export async function getMyCheers(userId: string, tastingIds: string[]): Promise<Set<string>> {
-  if (!tastingIds.length) return new Set()
-  const data = check(await supabase.from('tasting_cheers').select('tasting_id').eq('user_id', userId).in('tasting_id', tastingIds))
-  return new Set(data.map((r) => r.tasting_id as string))
+  const ids = new Set(tastingIds)
+  return new Set(getDB().cheers.filter((c) => c.user_id === userId && ids.has(c.tasting_id)).map((c) => c.tasting_id))
 }
 
 export async function setCheer(userId: string, tastingId: string, on: boolean) {
-  if (on) check(await supabase.from('tasting_cheers').upsert({ tasting_id: tastingId, user_id: userId }))
-  else check(await supabase.from('tasting_cheers').delete().eq('tasting_id', tastingId).eq('user_id', userId))
+  requireUser(userId)
+  mutate((db) => {
+    db.cheers = db.cheers.filter((c) => !(c.tasting_id === tastingId && c.user_id === userId))
+    if (on) db.cheers.push({ tasting_id: tastingId, user_id: userId, created_at: new Date().toISOString() })
+  })
 }
 
 export async function getComments(tastingId: string): Promise<Comment[]> {
-  return check(
-    await supabase
-      .from('tasting_comments')
-      .select('*, profile:profiles(id, display_name, avatar_url)')
-      .eq('tasting_id', tastingId)
-      .eq('hidden', false)
-      .order('created_at'),
-  ) as unknown as Comment[]
+  const v = viewer()
+  return getDB()
+    .comments.filter((c) => c.tasting_id === tastingId && !c.hidden)
+    .filter((c) => canSeeComment(c, v))
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map(toComment)
 }
 
 export async function addComment(userId: string, tastingId: string, body: string) {
-  check(await supabase.from('tasting_comments').insert({ tasting_id: tastingId, user_id: userId, body }))
+  const v = requireUser(userId)
+  const text = body.trim()
+  if (text.length < 1 || text.length > 500) throw new Error('El comentario tiene que tener entre 1 y 500 letras')
+  const t = getDB().tastings.find((x) => x.id === tastingId)
+  if (!t || !canSeeTasting(t, v)) throw new Error('Esta publicación ya no está disponible')
+  mutate((db) =>
+    db.comments.push({ id: uid(), tasting_id: tastingId, user_id: userId, body: text, hidden: false, created_at: new Date().toISOString() }),
+  )
 }
 
 export async function deleteComment(id: string) {
-  check(await supabase.from('tasting_comments').delete().eq('id', id))
+  const v = requireUser()
+  const c = getDB().comments.find((x) => x.id === id)
+  if (!c) return
+  if (c.user_id !== v.id && !v.admin) throw new Error('Solo podés borrar tus comentarios')
+  mutate((db) => {
+    db.comments = db.comments.filter((x) => x.id !== id)
+    db.reports = db.reports.filter((r) => !(r.target_type === 'comment' && r.target_id === id))
+  })
 }
 
 // ---------- Quiero probar ----------
 
 export async function getWishlist(userId: string): Promise<Wine[]> {
-  const data = check(await supabase.from('wishlist').select('wine:wines(*)').eq('user_id', userId).order('created_at', { ascending: false }))
-  return (data as unknown as { wine: Wine | null }[]).map((r) => r.wine).filter((w): w is Wine => Boolean(w))
+  const v = viewer()
+  return getDB()
+    .wishlist.filter((x) => x.user_id === userId)
+    .sort(newestFirst)
+    .map((x) => visibleWine(x.wine_id, v))
+    .filter((w): w is Wine => Boolean(w))
 }
 
 export async function isInWishlist(userId: string, wineId: string) {
-  const data = check(await supabase.from('wishlist').select('wine_id').eq('user_id', userId).eq('wine_id', wineId))
-  return data.length > 0
+  return getDB().wishlist.some((x) => x.user_id === userId && x.wine_id === wineId)
 }
 
 export async function setWishlist(userId: string, wineId: string, on: boolean) {
-  if (on) check(await supabase.from('wishlist').upsert({ user_id: userId, wine_id: wineId }))
-  else check(await supabase.from('wishlist').delete().eq('user_id', userId).eq('wine_id', wineId))
+  requireUser(userId)
+  mutate((db) => {
+    db.wishlist = db.wishlist.filter((x) => !(x.user_id === userId && x.wine_id === wineId))
+    if (on) db.wishlist.push({ user_id: userId, wine_id: wineId, created_at: new Date().toISOString() })
+  })
 }
 
 // ---------- Ventas ----------
 
 /** Registra el toque en "Lo quiero" (para medir); nunca bloquea la apertura de WhatsApp */
 export function logWantClick(userId: string, wineId: string) {
-  void supabase.from('want_clicks').insert({ user_id: userId, wine_id: wineId }).then(() => undefined)
+  try {
+    mutate((db) => db.wantClicks.push({ id: uid(), user_id: userId, wine_id: wineId, created_at: new Date().toISOString() }))
+  } catch {
+    // Medir no es crítico
+  }
 }
 
 // ---------- Reportes y moderación ----------
 
 export async function reportContent(userId: string, target_type: 'tasting' | 'comment', target_id: string, reason = '') {
-  const { error } = await supabase.from('reports').insert({ reporter_id: userId, target_type, target_id, reason })
-  // Si ya lo había reportado, no es un error para el usuario
-  if (error && !error.message.includes('duplicate')) throw new Error(error.message)
+  requireUser(userId)
+  mutate((db) => {
+    // Si ya lo había reportado, no es un error para el usuario
+    if (db.reports.some((r) => r.reporter_id === userId && r.target_type === target_type && r.target_id === target_id)) return
+    db.reports.push({
+      id: uid(),
+      target_type,
+      target_id,
+      reporter_id: userId,
+      reason: reason.slice(0, 200) || null,
+      status: 'pendiente',
+      created_at: new Date().toISOString(),
+    })
+  })
 }
 
 export async function getPendingReports(): Promise<Report[]> {
-  return check(await supabase.from('reports').select('*').eq('status', 'pendiente').order('created_at', { ascending: false }))
+  requireAdmin()
+  return getDB()
+    .reports.filter((r) => r.status === 'pendiente')
+    .sort(newestFirst)
+    .map((r) => ({ ...r }))
 }
 
 export async function getCommentById(id: string): Promise<Comment | null> {
-  return check(
-    await supabase.from('tasting_comments').select('*, profile:profiles(id, display_name, avatar_url)').eq('id', id).maybeSingle(),
-  ) as unknown as Comment | null
+  const c = getDB().comments.find((x) => x.id === id)
+  return c && canSeeComment(c, viewer()) ? toComment(c) : null
 }
 
-export async function moderate(target_type: 'tasting' | 'comment', target_id: string, action: 'ocultar' | 'mantener') {
-  check(await supabase.rpc('moderate', { p_target_type: target_type, p_target_id: target_id, p_action: action }))
+/** Ocultar, mantener o volver a mostrar una publicación o comentario, y cerrar sus reportes */
+export async function moderate(target_type: 'tasting' | 'comment', target_id: string, action: 'ocultar' | 'mantener' | 'mostrar') {
+  requireAdmin()
+  mutate((db) => {
+    const target = target_type === 'tasting' ? db.tastings.find((t) => t.id === target_id) : db.comments.find((c) => c.id === target_id)
+    if (target) target.hidden = action === 'ocultar'
+    for (const r of db.reports) {
+      if (r.target_type === target_type && r.target_id === target_id && r.status === 'pendiente') {
+        r.status = action === 'ocultar' ? 'oculto' : 'mantenido'
+      }
+    }
+  })
 }
 
-export async function getWeekStats(): Promise<WeekStats | null> {
-  const data = check(await supabase.rpc('admin_week_stats'))
-  return (data as WeekStats[])?.[0] ?? null
+/** Lo que ocultó la vinoteca, para poder volver a mostrarlo */
+export async function getHiddenContent(): Promise<{ tastings: FeedItem[]; comments: Comment[] }> {
+  const v = requireAdmin()
+  const db = getDB()
+  return {
+    tastings: db.tastings.filter((t) => t.hidden).sort(newestFirst).map((t) => toFeedItem(t, v)),
+    comments: db.comments.filter((c) => c.hidden).sort(newestFirst).map(toComment),
+  }
+}
+
+export async function getWeekStats(): Promise<WeekStats> {
+  requireAdmin()
+  const db = getDB()
+  const since = new Date(Date.now() - 7 * DAY).toISOString()
+  const pending = new Set(db.reports.filter((r) => r.status === 'pendiente').map((r) => `${r.target_type}:${r.target_id}`))
+  return {
+    new_members: db.profiles.filter((p) => p.role === 'socio' && p.created_at >= since).length,
+    tastings: db.tastings.filter((t) => t.created_at >= since).length,
+    want_clicks: db.wantClicks.filter((c) => c.created_at >= since).length,
+    pending_reports: pending.size,
+  }
 }
 
 // ---------- Configuración del club ----------
 
-export async function getClubSettings(): Promise<ClubSettings | null> {
-  return check(await supabase.from('club_settings').select('wine_of_month_id, wine_of_month_note').eq('id', 1).maybeSingle())
+export async function getClubSettings(): Promise<ClubSettings> {
+  return { ...getDB().settings }
+}
+
+/** Vino del mes con sus datos, en una sola consulta */
+export async function getWineOfMonth(): Promise<{ wine: Wine; note: string | null } | null> {
+  const { wine_of_month_id, wine_of_month_note } = getDB().settings
+  const wine = wine_of_month_id ? visibleWine(wine_of_month_id, viewer()) : null
+  return wine && wine.active ? { wine, note: wine_of_month_note } : null
 }
 
 export async function setWineOfMonth(wineId: string | null, note: string | null) {
-  check(
-    await supabase
-      .from('club_settings')
-      .update({ wine_of_month_id: wineId, wine_of_month_note: note, updated_at: new Date().toISOString() })
-      .eq('id', 1),
-  )
-}
-
-export async function getWineStats(wineId: string): Promise<{ avg: number | null; votes: number }> {
-  const data = check(await supabase.from('tastings').select('rating').eq('wine_id', wineId).eq('hidden', false))
-  if (!data.length) return { avg: null, votes: 0 }
-  const sum = data.reduce((s, r) => s + (r.rating as number), 0)
-  return { avg: sum / data.length, votes: data.length }
+  requireAdmin()
+  mutate((db) => {
+    db.settings = { wine_of_month_id: wineId, wine_of_month_note: note?.slice(0, 200) || null }
+  })
 }

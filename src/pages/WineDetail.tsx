@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { getMyCheers, getRanking, getWine, getWineStats, getWineTastings, isInWishlist, logWantClick, setWishlist } from '../lib/api'
+import { getMyCheers, getWine, getWineSummary, getWineTastings, isInWishlist, logWantClick, setWishlist } from '../lib/api'
 import { formatPrice, formatRating, photoUrl, whatsappLink } from '../lib/format'
-import type { FeedItem, Wine } from '../lib/types'
+import type { FeedItem, Wine, WineSummary } from '../lib/types'
 import TastingCard from '../components/TastingCard'
 import { Empty, ErrorBox, Loading, WineThumb } from '../components/ui'
 import { IconBack, IconBookmark, IconChat } from '../components/Icons'
@@ -11,48 +11,40 @@ import { IconBack, IconBookmark, IconChat } from '../components/Icons'
 export default function WineDetail() {
   const { id = '' } = useParams()
   const { profile } = useAuth()
+  const profileId = profile?.id
   const navigate = useNavigate()
   const [wine, setWine] = useState<Wine | null | undefined>(undefined)
-  const [stats, setStats] = useState<{ avg: number | null; votes: number }>({ avg: null, votes: 0 })
-  const [position, setPosition] = useState<number | null>(null)
+  const [stats, setStats] = useState<WineSummary>({ avg: null, votes: 0, position: null })
   const [tastings, setTastings] = useState<FeedItem[]>([])
   const [cheers, setCheers] = useState<Set<string>>(new Set())
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
-    if (!profile) return
+    if (!profileId) return
     setError('')
     try {
-      const [w, s, t, inList, ranking] = await Promise.all([
-        getWine(id),
-        getWineStats(id),
-        getWineTastings(id),
-        isInWishlist(profile.id, id),
-        getRanking(),
-      ])
+      const [w, s, t, inList] = await Promise.all([getWine(id), getWineSummary(id), getWineTastings(id), isInWishlist(profileId, id)])
       setWine(w)
       setStats(s)
       setTastings(t)
       setSaved(inList)
-      const idx = ranking.findIndex((r) => r.id === id)
-      setPosition(idx >= 0 ? idx + 1 : null)
-      setCheers(await getMyCheers(profile.id, t.map((x) => x.id)))
+      setCheers(await getMyCheers(profileId, t.map((x) => x.id)))
     } catch (e) {
       setError((e as Error).message)
     }
-  }, [id, profile])
+  }, [id, profileId])
 
   useEffect(() => {
     void load()
   }, [load])
 
   async function toggleSaved() {
-    if (!profile) return
+    if (!profileId) return
     const on = !saved
     setSaved(on)
     try {
-      await setWishlist(profile.id, id, on)
+      await setWishlist(profileId, id, on)
     } catch {
       setSaved(!on)
     }
@@ -99,8 +91,8 @@ export default function WineDetail() {
 
       <div className="flex flex-col gap-4 px-5 pb-40 pt-5">
         <div className="flex flex-col gap-1">
-          {position && (
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-vino">#{position} del ranking</span>
+          {stats.position && (
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-vino">#{stats.position} del ranking</span>
           )}
           {!isCatalog && <span className="text-xs font-semibold uppercase tracking-[0.12em] text-gris">Vino externo</span>}
           <h1 className="text-[26px] font-medium leading-tight">
@@ -153,7 +145,7 @@ export default function WineDetail() {
             href={whatsappLink(wine)}
             target="_blank"
             rel="noopener"
-            onClick={() => profile && logWantClick(profile.id, wine.id)}
+            onClick={() => profileId && logWantClick(profileId, wine.id)}
             className="flex h-13 flex-[1.6] items-center justify-center gap-2 rounded-full bg-vino text-[15px] font-medium text-white no-underline"
           >
             <IconChat size={18} /> Lo quiero

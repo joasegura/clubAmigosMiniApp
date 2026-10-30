@@ -17,15 +17,16 @@ interface Props {
 
 export default function TastingCard({ item, cheered, onCheerChange, onDeleted, showWine = true }: Props) {
   const { profile } = useAuth()
-  const [cheerCount, setCheerCount] = useState(item.cheers?.[0]?.count ?? 0)
+  const [cheerCount, setCheerCount] = useState(item.cheer_count)
   const [isCheered, setIsCheered] = useState(cheered)
-  const [commentCount, setCommentCount] = useState(item.comments?.[0]?.count ?? 0)
+  const [commentCount, setCommentCount] = useState(item.comment_count)
   const [comments, setComments] = useState<Comment[] | null>(null)
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [menu, setMenu] = useState(false)
   const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
 
   const mine = profile?.id === item.user_id
   const wine = item.wine
@@ -44,37 +45,59 @@ export default function TastingCard({ item, cheered, onCheerChange, onDeleted, s
     }
   }
 
+  /** Corre una acción y, si falla, se lo muestra al socio en la tarjeta */
+  async function attempt(fn: () => Promise<void>) {
+    setError('')
+    try {
+      await fn()
+    } catch (e) {
+      setError((e as Error).message || 'Algo salió mal, probá de nuevo.')
+    }
+  }
+
   async function toggleComments() {
     const next = !open
     setOpen(next)
-    if (next && comments === null) setComments(await getComments(item.id))
+    if (next && comments === null) await attempt(async () => setComments(await getComments(item.id)))
   }
 
   async function send(e: React.FormEvent) {
     e.preventDefault()
     if (!profile || !draft.trim()) return
     setSending(true)
-    try {
+    await attempt(async () => {
       await addComment(profile.id, item.id, draft.trim())
       setDraft('')
       setComments(await getComments(item.id))
       setCommentCount((c) => c + 1)
-    } finally {
-      setSending(false)
-    }
+    })
+    setSending(false)
   }
 
   async function report(type: 'tasting' | 'comment', id: string) {
     if (!profile) return
-    await reportContent(profile.id, type, id)
     setMenu(false)
-    setNotice('Gracias, la vinoteca lo va a revisar.')
+    await attempt(async () => {
+      await reportContent(profile.id, type, id)
+      setNotice('Gracias, la vinoteca lo va a revisar.')
+    })
   }
 
   async function remove() {
+    setMenu(false)
     if (!window.confirm('¿Borrar esta publicación?')) return
-    await deleteTasting(item.id)
-    onDeleted?.(item.id)
+    await attempt(async () => {
+      await deleteTasting(item.id)
+      onDeleted?.(item.id)
+    })
+  }
+
+  async function removeComment(id: string) {
+    await attempt(async () => {
+      await deleteComment(id)
+      setComments((cs) => cs?.filter((x) => x.id !== id) ?? null)
+      setCommentCount((n) => n - 1)
+    })
   }
 
   return (
@@ -91,8 +114,9 @@ export default function TastingCard({ item, cheered, onCheerChange, onDeleted, s
         <button aria-label="Opciones" aria-expanded={menu} onClick={() => setMenu((m) => !m)} className="flex h-10 w-10 items-center justify-center text-gris">
           <IconMore />
         </button>
+        {menu && <button aria-label="Cerrar menú" tabIndex={-1} onClick={() => setMenu(false)} className="fixed inset-0 z-10 cursor-default" />}
         {menu && (
-          <div className="absolute right-3 top-12 z-10 w-48 overflow-hidden rounded-xl border border-linea bg-white text-sm shadow-lg">
+          <div className="absolute right-3 top-12 z-20 w-48 overflow-hidden rounded-xl border border-linea bg-white text-sm shadow-lg">
             {mine ? (
               <button onClick={remove} className="block w-full px-4 py-3 text-left text-vino">
                 Borrar publicación
@@ -134,11 +158,16 @@ export default function TastingCard({ item, cheered, onCheerChange, onDeleted, s
         {item.comment && <p className="whitespace-pre-line text-sm leading-relaxed text-texto">{item.comment}</p>}
         {item.hidden && <p className="text-xs font-medium text-vino">Oculta por la vinoteca (solo la ves vos)</p>}
         {notice && <p className="text-xs text-ok">{notice}</p>}
+        {error && (
+          <p className="text-xs text-vino" role="alert">
+            {error}
+          </p>
+        )}
 
         <div className="flex gap-5 pt-0.5 text-[13px]">
           <button onClick={toggleCheer} aria-pressed={isCheered} className={`flex h-9 items-center gap-1.5 ${isCheered ? 'text-vino' : 'text-gris'}`}>
             <IconGlass size={18} filled={isCheered} />
-            {cheerCount} {cheerCount === 1 ? 'brindis' : 'brindis'}
+            {cheerCount} brindis
           </button>
           <button onClick={toggleComments} aria-expanded={open} className="flex h-9 items-center gap-1.5 text-gris">
             <IconChat size={18} />
@@ -160,15 +189,7 @@ export default function TastingCard({ item, cheered, onCheerChange, onDeleted, s
                   <div className="flex gap-3 text-[11px] text-gris">
                     <span>{timeAgo(c.created_at)}</span>
                     {c.user_id === profile?.id ? (
-                      <button
-                        onClick={async () => {
-                          await deleteComment(c.id)
-                          setComments((cs) => cs?.filter((x) => x.id !== c.id) ?? null)
-                          setCommentCount((n) => n - 1)
-                        }}
-                      >
-                        Borrar
-                      </button>
+                      <button onClick={() => removeComment(c.id)}>Borrar</button>
                     ) : (
                       <button onClick={() => report('comment', c.id)}>Reportar</button>
                     )}

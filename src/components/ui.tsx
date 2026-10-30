@@ -80,7 +80,7 @@ export function WineThumb({
   className?: string
   bottleSize?: number
 }) {
-  const src = photoUrl(photoPath) ?? wine?.image_url
+  const src = photoUrl(photoPath) ?? photoUrl(wine?.image_url)
   if (src) return <img src={src} alt={wine?.name ?? ''} loading="lazy" className={`object-cover ${className}`} />
   const color = (wine?.varietal && BOTTLE_COLORS[wine.varietal]) || '#5A1E22'
   return (

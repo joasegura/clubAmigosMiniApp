@@ -1,5 +1,8 @@
-import { supabase, WHATSAPP_NUMBER } from './supabase'
+import { photoSrc } from './store'
 import type { Wine } from './types'
+
+/** WhatsApp de la vinoteca: solo números, con código de país */
+export const WHATSAPP_NUMBER = (import.meta.env.VITE_WHATSAPP_NUMBER as string | undefined)?.replace(/\D/g, '') ?? ''
 
 const pesos = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
 
@@ -38,9 +41,16 @@ export function wineSubtitle(w: Pick<Wine, 'winery' | 'varietal' | 'vintage'>) {
   return [w.varietal, w.winery, w.vintage].filter(Boolean).join(' · ')
 }
 
+/** Minúsculas y sin tildes, para buscar "torrontes" y encontrar "Torrontés" */
+export function normalizeText(s: string) {
+  return s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
+}
+
+/** URL para mostrar una foto: las URLs completas pasan tal cual, las rutas son fotos guardadas en el dispositivo */
 export function photoUrl(path: string | null | undefined) {
   if (!path) return null
-  return supabase.storage.from('fotos').getPublicUrl(path).data.publicUrl
+  if (/^(https?:|blob:|data:|\/)/.test(path)) return path
+  return photoSrc(path)
 }
 
 export function whatsappLink(wine: Pick<Wine, 'name' | 'winery' | 'vintage'>, kind: 'reservar' | 'aviso' = 'reservar') {

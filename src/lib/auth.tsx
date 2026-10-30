@@ -1,81 +1,59 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import type { Session } from '@supabase/supabase-js'
-import { supabase } from './supabase'
-import { getProfile } from './api'
+import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { getCurrentProfile, signInAsShop, signInDemo, signOutDemo } from './api'
 import type { Profile } from './types'
 
+/**
+ * DEMO: el ingreso es simulado. En producción, "Continuar con Google" y el
+ * código por mail los resuelve el proveedor de login; acá se simula el mismo
+ * flujo para poder mostrarlo. El código de 6 dígitos se muestra en pantalla.
+ */
 interface AuthState {
-  session: Session | null
   profile: Profile | null
-  loading: boolean
   isAdmin: boolean
   refreshProfile: () => Promise<void>
   signInWithGoogle: () => Promise<void>
-  signInWithEmail: (email: string) => Promise<void>
+  /** Devuelve el código (en la demo se muestra en pantalla en vez de mandarlo por mail) */
+  sendCode: (email: string) => Promise<string>
+  verifyCode: (email: string, code: string) => Promise<void>
+  signInAsShop: () => Promise<void>
   signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null)
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState<Profile | null>(() => getCurrentProfile())
+  const [pending, setPending] = useState<{ email: string; code: string } | null>(null)
 
-  const loadProfile = useCallback(async (s: Session | null) => {
-    if (!s) {
-      setProfile(null)
-      return
-    }
-    try {
-      // El perfil lo crea un trigger al registrarse; reintentamos por si tarda un instante
-      let p = await getProfile(s.user.id)
-      if (!p) {
-        await new Promise((r) => setTimeout(r, 800))
-        p = await getProfile(s.user.id)
-      }
-      setProfile(p)
-    } catch {
-      setProfile(null)
-    }
-  }, [])
-
-  useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      setSession(data.session)
-      await loadProfile(data.session)
-      setLoading(false)
-    })
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s)
-      // No hacer await dentro del callback (recomendación de supabase-js)
-      setTimeout(() => void loadProfile(s), 0)
-    })
-    return () => sub.subscription.unsubscribe()
-  }, [loadProfile])
+  const refreshProfile = useCallback(async () => setProfile(getCurrentProfile()), [])
 
   const value: AuthState = {
-    session,
     profile,
-    loading,
     isAdmin: profile?.role === 'admin',
-    refreshProfile: () => loadProfile(session),
+    refreshProfile,
     signInWithGoogle: async () => {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: window.location.origin },
-      })
-      if (error) throw error
+      setProfile(await signInDemo('socio.demo@gmail.com', 'Socio Demo'))
     },
-    signInWithEmail: async (email: string) => {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: window.location.origin },
-      })
-      if (error) throw error
+    sendCode: async (email: string) => {
+      const clean = email.trim().toLowerCase()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) throw new Error('Revisá el mail, parece que tiene un error')
+      const code = String(Math.floor(100000 + Math.random() * 900000))
+      setPending({ email: clean, code })
+      return code
+    },
+    verifyCode: async (email: string, code: string) => {
+      const clean = email.trim().toLowerCase()
+      if (!pending || pending.email !== clean) throw new Error('Pedí un código nuevo')
+      if (code.replace(/\D/g, '') !== pending.code) throw new Error('El código no es correcto')
+      setPending(null)
+      setProfile(await signInDemo(clean))
+    },
+    signInAsShop: async () => {
+      setProfile(await signInAsShop())
     },
     signOut: async () => {
-      await supabase.auth.signOut()
+      await signOutDemo()
+      setProfile(null)
     },
   }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { getUserTastings, getWishlist, updateDisplayName } from '../lib/api'
+import { resetStore } from '../lib/store'
 import { formatPrice, memberSince, wineSubtitle } from '../lib/format'
 import type { FeedItem, Wine } from '../lib/types'
 import { Avatar, Copas, Empty, ErrorBox, Loading, WineThumb } from '../components/ui'
@@ -16,18 +17,21 @@ export default function Profile() {
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState('')
+  const [nameError, setNameError] = useState('')
+  const [confirmReset, setConfirmReset] = useState(false)
+  const profileId = profile?.id
 
   const load = useCallback(async () => {
-    if (!profile) return
+    if (!profileId) return
     setError('')
     try {
-      const [t, w] = await Promise.all([getUserTastings(profile.id), getWishlist(profile.id)])
+      const [t, w] = await Promise.all([getUserTastings(profileId), getWishlist(profileId)])
       setTastings(t)
       setWishlist(w)
     } catch (e) {
       setError((e as Error).message)
     }
-  }, [profile])
+  }, [profileId])
 
   useEffect(() => {
     void load()
@@ -49,9 +53,20 @@ export default function Profile() {
   async function saveName(e: React.FormEvent) {
     e.preventDefault()
     if (!profile || !name.trim()) return
-    await updateDisplayName(profile.id, name.trim())
-    await refreshProfile()
-    setEditing(false)
+    setNameError('')
+    try {
+      await updateDisplayName(profile.id, name.trim())
+      await refreshProfile()
+      setEditing(false)
+    } catch (err) {
+      setNameError((err as Error).message)
+    }
+  }
+
+  async function resetDemo() {
+    await resetStore()
+    // Recargar deja la app limpia, con los datos de ejemplo y sin sesión
+    window.location.assign('/')
   }
 
   if (!profile) return <Loading />
@@ -90,6 +105,11 @@ export default function Profile() {
                   Editar nombre
                 </button>
               </>
+            )}
+            {editing && nameError && (
+              <p className="mt-1 text-xs text-vino" role="alert">
+                {nameError}
+              </p>
             )}
             <p className="text-[13px] text-gris">Socio del club desde {memberSince(profile.created_at)}</p>
           </div>
@@ -195,6 +215,34 @@ export default function Profile() {
           )}
         </>
       )}
+
+      <footer className="flex flex-col items-center gap-3 px-5 pb-6 pt-8 text-xs text-gris">
+        <div className="flex gap-4">
+          <Link to="/terminos" className="text-gris underline">
+            Términos
+          </Link>
+          <Link to="/privacidad" className="text-gris underline">
+            Privacidad
+          </Link>
+        </div>
+        {confirmReset ? (
+          <div className="flex w-full flex-col gap-2 rounded-xl border border-vino/30 bg-white p-3 text-center">
+            <p className="text-texto">Se borra todo lo cargado en este dispositivo y vuelven los datos de ejemplo.</p>
+            <div className="flex gap-2">
+              <button onClick={resetDemo} className="h-9 flex-1 rounded-full bg-vino text-white">
+                Reiniciar
+              </button>
+              <button onClick={() => setConfirmReset(false)} className="h-9 flex-1 rounded-full border border-borde">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmReset(true)} className="underline">
+            Reiniciar demo
+          </button>
+        )}
+      </footer>
     </>
   )
 }

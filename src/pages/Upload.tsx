@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { createExternalWine, createTasting, getWine, searchCatalog, uploadPhoto } from '../lib/api'
+import { createExternalWine, createTasting, getMyLastRating, getWine, searchCatalog, uploadPhoto } from '../lib/api'
 import { OCCASIONS, RATING_LABELS, wineSubtitle } from '../lib/format'
 import type { Wine } from '../lib/types'
 import { Chip, CopasInput, WineThumb } from '../components/ui'
@@ -25,7 +25,10 @@ export default function Upload() {
   const [occasion, setOccasion] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [lastRating, setLastRating] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  /** Foto ya subida: si falla la publicación y se reintenta, no se sube de nuevo */
+  const uploaded = useRef<{ file: File; path: string } | null>(null)
 
   // Si viene de "Lo tomé" en una ficha, el vino ya queda elegido
   useEffect(() => {
@@ -40,6 +43,12 @@ export default function Upload() {
     }, 250)
     return () => clearTimeout(t)
   }, [query, selected, external])
+
+  // Si ya lo había puntuado, avisamos que para el ranking cuenta el último puntaje
+  useEffect(() => {
+    if (!selected || !profile) return setLastRating(null)
+    getMyLastRating(profile.id, selected.id).then(setLastRating).catch(() => setLastRating(null))
+  }, [selected, profile])
 
   useEffect(() => {
     if (!photo) return setPreview(null)
@@ -56,6 +65,12 @@ export default function Upload() {
     setSaving(true)
     setError('')
     try {
+      // Primero la foto: es lo que más puede fallar (conexión, formato)
+      let photo_path: string | null = null
+      if (photo) {
+        if (uploaded.current?.file !== photo) uploaded.current = { file: photo, path: await uploadPhoto(profile.id, photo) }
+        photo_path = uploaded.current.path
+      }
       let wine = selected
       if (!wine) {
         wine = await createExternalWine(profile.id, {
@@ -64,8 +79,10 @@ export default function Upload() {
           varietal: ext.varietal.trim() || null,
           vintage: ext.vintage ? Number(ext.vintage) : null,
         })
+        // Queda elegido: si algo falla después, el reintento no lo crea dos veces
+        setSelected(wine)
+        setExternal(false)
       }
-      const photo_path = photo ? await uploadPhoto(profile.id, photo) : null
       await createTasting({
         user_id: profile.id,
         wine_id: wine.id,
@@ -221,6 +238,11 @@ export default function Upload() {
             <CopasInput value={rating} onChange={setRating} />
             <span className="text-sm text-gris">{RATING_LABELS[rating]}</span>
           </div>
+          {lastRating && (
+            <p className="text-xs text-gris">
+              Ya lo puntuaste con {lastRating} {lastRating === 1 ? 'copa' : 'copas'}. Para el ranking cuenta tu último puntaje.
+            </p>
+          )}
         </section>
 
         {/* 4. Comentario */}

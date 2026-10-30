@@ -116,6 +116,13 @@ export default function Ranking() {
           </Link>
         ))}
 
+        {list.length > 0 && (
+          <p className="px-1 text-[11px] leading-relaxed text-gris">
+            Cuenta un voto por socio (su último puntaje). Para ordenar se pondera por la cantidad de votos: un vino con un solo voto no pasa
+            adelante de uno que muchos socios puntuaron alto.
+          </p>
+        )}
+
         {top && (
           <Link to={`/vino/${top.wine_id}`} className="mt-1 flex items-center gap-2.5 rounded-[14px] bg-vino-suave px-3.5 py-3 text-[13px] text-vino-oscuro no-underline">
             <IconSpark size={20} className="text-vino" />
