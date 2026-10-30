@@ -6,13 +6,15 @@ import { formatPrice, formatRating, photoUrl, whatsappLink } from '../lib/format
 import type { FeedItem, Wine, WineSummary } from '../lib/types'
 import TastingCard from '../components/TastingCard'
 import { Empty, ErrorBox, Loading, WineThumb } from '../components/ui'
-import { IconBack, IconBookmark, IconChat } from '../components/Icons'
+import { IconBack, IconBookmark, IconChat, IconShare } from '../components/Icons'
+import { useFeedback } from '../components/feedback'
 
 export default function WineDetail() {
   const { id = '' } = useParams()
   const { profile } = useAuth()
   const profileId = profile?.id
   const navigate = useNavigate()
+  const { toast } = useFeedback()
   const [wine, setWine] = useState<Wine | null | undefined>(undefined)
   const [stats, setStats] = useState<WineSummary>({ avg: null, votes: 0, position: null })
   const [tastings, setTastings] = useState<FeedItem[]>([])
@@ -45,8 +47,24 @@ export default function WineDetail() {
     setSaved(on)
     try {
       await setWishlist(profileId, id, on)
+      toast(on ? 'Guardado en Quiero probar' : 'Quitado de Quiero probar')
     } catch {
       setSaved(!on)
+    }
+  }
+
+  async function share() {
+    if (!wine) return
+    const url = `${window.location.origin}/vino/${wine.id}`
+    const text = `Mirá este vino en el Club Entre amigos: ${wine.name}`
+    try {
+      if (navigator.share) await navigator.share({ title: wine.name, text, url })
+      else {
+        await navigator.clipboard.writeText(url)
+        toast('Link copiado')
+      }
+    } catch {
+      // El socio canceló el menú de compartir
     }
   }
 
@@ -76,14 +94,19 @@ export default function WineDetail() {
         >
           <IconBack size={20} />
         </button>
-        <button
-          onClick={toggleSaved}
-          aria-pressed={saved}
-          aria-label={saved ? 'Quitar de Quiero probar' : 'Guardar en Quiero probar'}
-          className={`absolute right-3.5 top-3.5 flex h-11 w-11 items-center justify-center rounded-full bg-white shadow ${saved ? 'text-vino' : 'text-tinta'}`}
-        >
-          <IconBookmark size={20} filled={saved} />
-        </button>
+        <div className="absolute right-3.5 top-3.5 flex gap-2">
+          <button onClick={share} aria-label="Compartir este vino" className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-tinta shadow">
+            <IconShare size={19} />
+          </button>
+          <button
+            onClick={toggleSaved}
+            aria-pressed={saved}
+            aria-label={saved ? 'Quitar de Quiero probar' : 'Guardar en Quiero probar'}
+            className={`flex h-11 w-11 items-center justify-center rounded-full bg-white shadow ${saved ? 'text-vino' : 'text-tinta'}`}
+          >
+            <IconBookmark size={20} filled={saved} />
+          </button>
+        </div>
         {photos.length > 1 && (
           <span className="absolute bottom-3 right-4 rounded-full bg-white/90 px-2.5 py-1 text-xs text-gris">{photos.length} fotos del club</span>
         )}
@@ -133,7 +156,7 @@ export default function WineDetail() {
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-[68px] z-10 mx-auto flex max-w-md gap-2.5 border-t border-linea bg-white px-5 py-3">
+      <div className="bottom-nav fixed inset-x-0 z-10 mx-auto flex max-w-md gap-2.5 border-t border-linea bg-white/95 px-5 py-3 backdrop-blur">
         <Link
           to={`/subir?vino=${wine.id}`}
           className="flex h-13 flex-1 items-center justify-center rounded-full border border-tinta text-[15px] font-medium text-tinta no-underline"

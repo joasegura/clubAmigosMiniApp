@@ -4,9 +4,25 @@
  * club siempre se ve con actividad reciente.
  */
 import type { DB } from './store'
-import type { Profile, Tasting, Wine } from './types'
+import type { PointsMovement, Profile, Tasting, Wine } from './types'
 
 export const SHOP_ID = 'u-vinoteca'
+
+/** Reglas de puntos de EJEMPLO, hasta que las defina el sistema de la vinoteca (Nexus) */
+export const POINTS_RULES = {
+  welcome: 50,
+  /** Pesos de compra por cada punto */
+  pesosPerPoint: 1000,
+  rewards: [
+    { points: 100, label: '10% off en tu próxima compra' },
+    { points: 250, label: 'Una copa de regalo en la próxima cata' },
+    { points: 500, label: 'Un vino de regalo de la selección del mes' },
+  ],
+}
+
+export function memberCode(n: number) {
+  return `EA${String(1000 + n).padStart(6, '0')}`
+}
 
 const CATALOG: [string, string, string, number | null, string, number, boolean][] = [
   ['Malbec Reserva', 'Finca Los Álamos', 'Malbec', 2021, 'Valle de Uco, Mendoza', 18500, true],
@@ -33,6 +49,21 @@ const MEMBERS: [id: string, name: string, email: string, daysAgo: number][] = [
   ['u-diego', 'Diego Paz', 'diego@demo.com', 21],
   ['u-caro', 'Carolina Ruiz', 'caro@demo.com', 5],
   ['u-pablo', 'Pablo Medina', 'pablo@demo.com', 2],
+]
+
+// Compras de ejemplo en la vinoteca: [socio, monto en pesos, hace cuántos días]
+const PURCHASES: [string, number, number][] = [
+  ['u-martin', 37000, 40],
+  ['u-martin', 42000, 12],
+  ['u-martin', 18500, 2],
+  ['u-lucia', 29600, 30],
+  ['u-lucia', 16900, 4],
+  ['u-sofia', 84000, 20],
+  ['u-sofia', 8400, 1],
+  ['u-diego', 42000, 15],
+  ['u-diego', 26000, 3],
+  ['u-caro', 19600, 4],
+  ['u-pablo', 23500, 1],
 ]
 
 // [socio, vino (1-14), copas, comentario, ocasión, hace cuántas horas]
@@ -73,14 +104,29 @@ function wineId(n: number) {
 export function buildSeed(now = Date.now()): DB {
   const ago = (hours: number) => new Date(now - hours * 3600_000).toISOString()
 
-  const profiles: Profile[] = MEMBERS.map(([id, display_name, email, days]) => ({
+  const profiles: Profile[] = MEMBERS.map(([id, display_name, email, days], i) => ({
     id,
     email,
     display_name,
     avatar_url: null,
     role: id === SHOP_ID ? 'admin' : 'socio',
     created_at: ago(days * 24),
+    member_code: memberCode(i),
   }))
+
+  const pesos = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+  const points: PointsMovement[] = [
+    ...profiles
+      .filter((p) => p.role === 'socio')
+      .map((p) => ({ id: `p-w-${p.id}`, user_id: p.id, points: POINTS_RULES.welcome, concept: 'Bienvenida al club', created_at: p.created_at })),
+    ...PURCHASES.map(([user_id, amount, days], i) => ({
+      id: `p${i + 1}`,
+      user_id,
+      points: Math.floor(amount / POINTS_RULES.pesosPerPoint),
+      concept: `Compra en la vinoteca · ${pesos.format(amount)}`,
+      created_at: ago(days * 24),
+    })),
+  ]
 
   const wines: Wine[] = CATALOG.map(([name, winery, varietal, vintage, region, price, in_stock], i) => ({
     id: wineId(i + 1),
@@ -152,6 +198,7 @@ export function buildSeed(now = Date.now()): DB {
       user_id: memberIds[i % memberIds.length],
       created_at: ago(6 + i * 17),
     })),
+    points,
     settings: { wine_of_month_id: wineId(1), wine_of_month_note: '15% off para socios todo el mes' },
   }
 }

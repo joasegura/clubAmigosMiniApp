@@ -8,6 +8,9 @@ import { IconSpark } from '../components/Icons'
 
 const WHITES = ['Torrontés', 'Chardonnay', 'Sauvignon Blanc', 'Viognier', 'Semillón', 'Chenin', 'Riesling', 'Blanco']
 
+// Podio: oro, plata y bronce, en tonos suaves que acompañan la paleta de la marca
+const PODIUM = ['bg-[#E9C46A] text-[#5B4508]', 'bg-[#D9DDE1] text-[#3E464D]', 'bg-[#E4B48F] text-[#5C3415]']
+
 const PRICE_RANGES = [
   { id: 'todos', label: 'Cualquier precio', test: () => true },
   { id: 'hasta10', label: 'Hasta $10.000', test: (p: number) => p <= 10000 },
@@ -94,9 +97,13 @@ export default function Ranking() {
           <Link
             key={w.id}
             to={`/vino/${w.id}`}
-            className={`flex items-center gap-3.5 rounded-2xl border bg-white p-3.5 text-tinta no-underline ${i === 0 ? 'border-vino' : 'border-linea'}`}
+            className={`flex items-center gap-3.5 rounded-2xl border bg-white p-3.5 text-tinta no-underline active:bg-crema ${i === 0 ? 'border-vino' : 'border-linea'}`}
           >
-            <span className={`w-7 text-center text-3xl font-light ${i === 0 ? 'text-vino' : ''}`}>{i + 1}</span>
+            {i < 3 ? (
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[15px] font-semibold ${PODIUM[i]}`}>{i + 1}</span>
+            ) : (
+              <span className="w-8 shrink-0 text-center text-2xl font-light text-gris">{i + 1}</span>
+            )}
             <WineThumb wine={w} className="h-[72px] w-12 shrink-0 rounded-[10px]" bottleSize={58} />
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="truncate text-[15px] font-medium">{w.name}</span>

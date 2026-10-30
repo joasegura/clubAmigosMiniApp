@@ -8,6 +8,8 @@ export interface Profile {
   avatar_url: string | null
   role: Role
   created_at: string
+  /** Número de socio que va en el QR de la tarjeta (ej. EA001001). Se asigna la primera vez que se abre la tarjeta */
+  member_code?: string
 }
 
 export interface Wine {
@@ -88,6 +90,30 @@ export interface Report {
 export interface ClubSettings {
   wine_of_month_id: string | null
   wine_of_month_note: string | null
+}
+
+/** Movimiento de puntos. Hoy los carga la demo; a futuro vienen de Nexus */
+export interface PointsMovement {
+  id: string
+  user_id: string
+  points: number
+  concept: string
+  created_at: string
+}
+
+export interface Reward {
+  points: number
+  label: string
+}
+
+export interface MemberCard {
+  code: string
+  display_name: string
+  created_at: string
+  balance: number
+  movements: PointsMovement[]
+  /** Próximo beneficio que todavía no alcanzó (null si ya llegó al último) */
+  next_reward: Reward | null
 }
 
 export interface WeekStats {

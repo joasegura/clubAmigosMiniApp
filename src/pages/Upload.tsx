@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { createExternalWine, createTasting, getMyLastRating, getWine, searchCatalog, uploadPhoto } from '../lib/api'
+import { createExternalWine, createTasting, getMyLastRating, getRanking, getWine, searchCatalog, uploadPhoto } from '../lib/api'
 import { OCCASIONS, RATING_LABELS, wineSubtitle } from '../lib/format'
 import type { Wine } from '../lib/types'
 import { Chip, CopasInput, WineThumb } from '../components/ui'
 import { IconCamera, IconCheck, IconClose, IconSearch } from '../components/Icons'
+import { useFeedback } from '../components/feedback'
 
 export default function Upload() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
+  const { toast, confirm } = useFeedback()
 
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Wine[]>([])
+  /** null mientras busca, para no mostrar "no encontramos" antes de tiempo */
+  const [results, setResults] = useState<Wine[] | null>(null)
   const [selected, setSelected] = useState<Wine | null>(null)
   const [external, setExternal] = useState(false)
   const [ext, setExt] = useState({ name: '', winery: '', varietal: '', vintage: '' })
@@ -38,9 +41,15 @@ export default function Upload() {
 
   useEffect(() => {
     if (selected || external) return
-    const t = setTimeout(() => {
-      searchCatalog(query).then(setResults).catch(() => setResults([]))
-    }, 250)
+    setResults(null)
+    // Sin búsqueda, sugerimos los más votados del club; al escribir, buscamos en el catálogo
+    const t = setTimeout(
+      () => {
+        const req = query.trim() ? searchCatalog(query, 6) : getRanking().then((r) => r.slice(0, 4))
+        req.then(setResults).catch(() => setResults([]))
+      },
+      query.trim() ? 250 : 0,
+    )
     return () => clearTimeout(t)
   }, [query, selected, external])
 
@@ -91,21 +100,26 @@ export default function Upload() {
         occasion,
         photo_path,
       })
-      navigate('/', { replace: true })
+      toast('¡Listo! Tu vino ya está en el club')
+      navigate('/', { replace: true, state: { published: true } })
     } catch (e) {
       setError((e as Error).message)
       setSaving(false)
     }
   }
 
+  const dirty = Boolean(rating || comment.trim() || photo || ext.name.trim())
+
+  async function close() {
+    if (dirty && !(await confirm({ title: '¿Descartar lo que cargaste?', confirmLabel: 'Descartar', danger: true }))) return
+    if (window.history.length > 1) navigate(-1)
+    else navigate('/')
+  }
+
   return (
-    <div className="flex min-h-[calc(100vh-6rem)] flex-col bg-white">
-      <header className="flex items-center gap-2 border-b border-linea px-3 py-2">
-        <button
-          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
-          aria-label="Cerrar"
-          className="flex h-11 w-11 items-center justify-center text-tinta"
-        >
+    <div className="flex min-h-svh flex-col bg-white">
+      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-linea bg-white/95 px-3 py-2 backdrop-blur">
+        <button onClick={close} aria-label="Cerrar" className="flex h-11 w-11 items-center justify-center rounded-full text-tinta active:bg-crema">
           <IconClose />
         </button>
         <h1 className="text-[19px] font-medium">Subir un vino</h1>
@@ -175,8 +189,10 @@ export default function Upload() {
                   className="min-w-0 flex-1 bg-transparent text-[15px] text-tinta outline-none"
                 />
               </div>
+              {!query.trim() && results && results.length > 0 && <p className="mt-1 text-xs text-gris">Los más votados del club</p>}
               <ul className="flex flex-col divide-y divide-linea overflow-hidden rounded-xl border border-linea">
-                {results.map((w) => (
+                {results === null && <li className="px-3 py-3 text-sm text-gris">Buscando…</li>}
+                {results?.map((w) => (
                   <li key={w.id}>
                     <button onClick={() => setSelected(w)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-crema">
                       <WineThumb wine={w} className="h-12 w-8 rounded-md" bottleSize={38} />
@@ -187,7 +203,7 @@ export default function Upload() {
                     </button>
                   </li>
                 ))}
-                {results.length === 0 && <li className="px-3 py-3 text-sm text-gris">No encontramos ese vino en el catálogo.</li>}
+                {results?.length === 0 && <li className="px-3 py-3 text-sm text-gris">No encontramos ese vino en el catálogo.</li>}
               </ul>
               <button onClick={() => setExternal(true)} className="self-start text-[13px] text-vino underline">
                 ¿No está? Cargalo como vino externo
@@ -280,7 +296,7 @@ export default function Upload() {
         )}
       </div>
 
-      <div className="sticky bottom-20 border-t border-linea bg-white px-5 py-3">
+      <div className="pb-safe sticky bottom-0 border-t border-linea bg-white/95 px-5 pt-3 backdrop-blur">
         <button
           onClick={publish}
           disabled={!canPublish}

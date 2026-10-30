@@ -3,8 +3,8 @@
  * fotos en IndexedDB, solo en este dispositivo. No hay servidor ni base de
  * datos. Cuando se conecte el backend real, solo cambia `api.ts`.
  */
-import type { ClubSettings, CommentRow, Profile, Report, Tasting, Wine } from './types'
-import { buildSeed } from './seed'
+import type { ClubSettings, CommentRow, PointsMovement, Profile, Report, Tasting, Wine } from './types'
+import { buildSeed, memberCode } from './seed'
 
 export interface DB {
   version: 1
@@ -16,6 +16,7 @@ export interface DB {
   wishlist: { user_id: string; wine_id: string; created_at: string }[]
   reports: Report[]
   wantClicks: { id: string; wine_id: string; user_id: string; created_at: string }[]
+  points: PointsMovement[]
   settings: ClubSettings
 }
 
@@ -117,7 +118,19 @@ export async function initStore() {
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as DB
-      if (parsed?.version === 1) db = parsed
+      if (parsed?.version === 1) {
+        // Datos guardados antes de que existiera la tarjeta de puntos
+        parsed.points ??= []
+        const taken = new Set(parsed.profiles.map((p) => p.member_code).filter(Boolean))
+        let n = 0
+        for (const p of parsed.profiles) {
+          if (p.member_code) continue
+          while (taken.has(memberCode(n))) n++
+          p.member_code = memberCode(n)
+          taken.add(p.member_code)
+        }
+        db = parsed
+      }
     } catch {
       // Datos corruptos: arrancamos con la demo limpia
     }

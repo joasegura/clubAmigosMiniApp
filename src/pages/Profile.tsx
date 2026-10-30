@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { getUserTastings, getWishlist, updateDisplayName } from '../lib/api'
+import { getMemberCard, getUserTastings, getWishlist, updateDisplayName } from '../lib/api'
 import { resetStore } from '../lib/store'
 import { formatPrice, memberSince, wineSubtitle } from '../lib/format'
 import type { FeedItem, Wine } from '../lib/types'
 import { Avatar, Copas, Empty, ErrorBox, Loading, WineThumb } from '../components/ui'
-import { IconLogout, IconShield } from '../components/Icons'
+import { IconLogout, IconQr, IconShield } from '../components/Icons'
+import { useFeedback } from '../components/feedback'
 
 export default function Profile() {
   const { profile, isAdmin, signOut, refreshProfile } = useAuth()
+  const { confirm } = useFeedback()
+  const [points, setPoints] = useState<number | null>(null)
   const [params, setParams] = useSearchParams()
   const tab = params.get('tab') === 'quiero' ? 'quiero' : 'mios'
   const [tastings, setTastings] = useState<FeedItem[] | null>(null)
@@ -25,9 +28,10 @@ export default function Profile() {
     if (!profileId) return
     setError('')
     try {
-      const [t, w] = await Promise.all([getUserTastings(profileId), getWishlist(profileId)])
+      const [t, w, card] = await Promise.all([getUserTastings(profileId), getWishlist(profileId), getMemberCard(profileId)])
       setTastings(t)
       setWishlist(w)
+      setPoints(card.balance)
     } catch (e) {
       setError((e as Error).message)
     }
@@ -113,7 +117,13 @@ export default function Profile() {
             )}
             <p className="text-[13px] text-gris">Socio del club desde {memberSince(profile.created_at)}</p>
           </div>
-          <button onClick={signOut} aria-label="Cerrar sesión" className="flex h-11 w-11 items-center justify-center text-gris">
+          <button
+            onClick={async () => {
+              if (await confirm({ title: '¿Cerrar sesión?', confirmLabel: 'Cerrar sesión' })) await signOut()
+            }}
+            aria-label="Cerrar sesión"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gris active:bg-crema"
+          >
             <IconLogout />
           </button>
         </div>
@@ -132,6 +142,19 @@ export default function Profile() {
             <span className="text-xs text-gris">cepa favorita</span>
           </div>
         </div>
+
+        {points !== null && (
+          <Link
+            to="/tarjeta"
+            className="flex items-center gap-3 rounded-2xl bg-tinta px-4 py-3 text-white no-underline active:opacity-90"
+          >
+            <IconQr size={22} className="text-[#F08A8F]" />
+            <span className="flex-1 text-sm">
+              Tenés <b className="font-semibold">{points.toLocaleString('es-AR')} puntos</b>
+            </span>
+            <span className="text-[13px] text-[#CFC6C1]">Ver mi tarjeta ›</span>
+          </Link>
+        )}
 
         {isAdmin && (
           <Link to="/admin" className="flex h-11 items-center justify-center gap-2 rounded-full bg-tinta text-sm font-medium text-white no-underline">

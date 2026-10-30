@@ -8,14 +8,15 @@
  * las mismas funciones; las pantallas no cambian.
  */
 import { deletePhoto, getDB, getSessionUserId, mutate, savePhoto, setSessionUserId, uid } from './store'
-import { compressImage, normalizeText } from './format'
+import { compressImage, formatPrice, normalizeText } from './format'
 import { parseCatalogCsv } from './csv'
-import { SHOP_ID } from './seed'
+import { memberCode, POINTS_RULES, SHOP_ID } from './seed'
 import type {
   ClubSettings,
   Comment,
   CommentRow,
   FeedItem,
+  MemberCard,
   Profile,
   PublicProfile,
   RankedWine,
@@ -570,6 +571,71 @@ export async function getWeekStats(): Promise<WeekStats> {
     want_clicks: db.wantClicks.filter((c) => c.created_at >= since).length,
     pending_reports: pending.size,
   }
+}
+
+// ---------- Tarjeta de socio y puntos ----------
+// DEMO: los puntos se cargan desde el panel ("Cargar compra"). A futuro los va a
+// informar Nexus cuando la caja escanee el QR; el QR solo lleva el número de socio.
+
+/** Número de socio normalizado: "ea 001 001" → "EA001001" */
+const cleanCode = (code: string) => code.replace(/[\s-]/g, '').toUpperCase()
+
+export async function getMemberCard(userId: string): Promise<MemberCard> {
+  requireUser(userId)
+  const profile = mutate((db) => {
+    const p = db.profiles.find((x) => x.id === userId)
+    if (!p) throw new Error('No encontramos tu perfil')
+    // Primer uso de la tarjeta: número de socio correlativo y puntos de bienvenida
+    if (!p.member_code) {
+      const taken = new Set(db.profiles.map((x) => x.member_code).filter(Boolean))
+      let n = db.profiles.length
+      while (taken.has(memberCode(n))) n++
+      p.member_code = memberCode(n)
+    }
+    if (p.role === 'socio' && !db.points.some((m) => m.user_id === userId)) {
+      db.points.push({ id: uid(), user_id: userId, points: POINTS_RULES.welcome, concept: 'Bienvenida al club', created_at: new Date().toISOString() })
+    }
+    return { ...p }
+  })
+  const movements = getDB().points.filter((m) => m.user_id === userId).sort(newestFirst)
+  const balance = movements.reduce((sum, m) => sum + m.points, 0)
+  return {
+    code: profile.member_code!,
+    display_name: profile.display_name,
+    created_at: profile.created_at,
+    balance,
+    movements: movements.slice(0, 10),
+    next_reward: POINTS_RULES.rewards.find((r) => r.points > balance) ?? null,
+  }
+}
+
+/** Busca un socio por el número de su tarjeta (lo que leería la caja al escanear el QR) */
+export async function findMemberByCode(code: string): Promise<{ id: string; display_name: string; balance: number } | null> {
+  requireAdmin()
+  const db = getDB()
+  const p = db.profiles.find((x) => x.member_code === cleanCode(code))
+  if (!p) return null
+  return { id: p.id, display_name: p.display_name, balance: db.points.filter((m) => m.user_id === p.id).reduce((s, m) => s + m.points, 0) }
+}
+
+/** Simula lo que va a hacer Nexus: registrar una compra y sumarle los puntos al socio */
+export async function addPurchase(code: string, amount: number): Promise<{ display_name: string; points: number; balance: number }> {
+  requireAdmin()
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Ingresá el monto de la compra')
+  const member = await findMemberByCode(code)
+  if (!member) throw new Error('No hay ningún socio con ese número')
+  const points = Math.floor(amount / POINTS_RULES.pesosPerPoint)
+  if (points < 1) throw new Error(`La compra tiene que ser de al menos ${formatPrice(POINTS_RULES.pesosPerPoint)} para sumar puntos`)
+  mutate((db) =>
+    db.points.push({
+      id: uid(),
+      user_id: member.id,
+      points,
+      concept: `Compra en la vinoteca · ${formatPrice(amount)}`,
+      created_at: new Date().toISOString(),
+    }),
+  )
+  return { display_name: member.display_name, points, balance: member.balance + points }
 }
 
 // ---------- Configuración del club ----------

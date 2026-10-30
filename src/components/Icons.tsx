@@ -29,6 +29,17 @@ export const IconPlus = (p: P) => (
 export const IconBookmark = ({ filled, ...p }: P & { filled?: boolean }) => (
   <svg {...base(p)} fill={filled ? 'currentColor' : 'none'}><path d="M6 3h12v18l-6-4-6 4z" /></svg>
 )
+export const IconQr = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3M21 14v.01M14 21h3M20 18v3M17 17h.01" />
+  </svg>
+)
+export const IconShare = (p: P) => (
+  <svg {...base(p)}><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
+)
 export const IconUser = (p: P) => (
   <svg {...base(p)}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>
 )

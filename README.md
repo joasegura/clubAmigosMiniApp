@@ -15,8 +15,9 @@ Desarrollado por ATOM Soluciones IT.
 | Ranking | Un voto por socio (su último puntaje), orden por promedio ponderado, filtros por cepa y precio, "el más tomado del mes" |
 | Subir vino | Buscar en el catálogo (sin importar tildes) o cargar un vino externo, foto (se comprime antes de guardar), puntaje 1–5 copas, comentario y ocasión |
 | Ficha del vino | Fotos del club, puntaje, puesto en el ranking, precio y stock, opiniones, "Lo tomé", "Lo quiero" por WhatsApp, guardar en "Quiero probar" |
+| Mi tarjeta | QR con el número de socio para mostrar en la caja, puntos, progreso al próximo beneficio, beneficios y últimos movimientos (reglas y puntos de ejemplo hasta conectar Nexus) |
 | Perfil | Mis vinos, estadísticas, lista "Quiero probar", editar nombre, términos y privacidad, **Reiniciar demo** |
-| Panel de la vinoteca | Números de la semana, vino del mes, moderar reportes, volver a mostrar lo oculto, catálogo con precio, stock, foto y visibilidad, **importar catálogo desde CSV** |
+| Panel de la vinoteca | Números de la semana, **cargar compra por número de socio** (simula la caja con Nexus), vino del mes, moderar reportes, volver a mostrar lo oculto, catálogo con precio, stock, foto y visibilidad, **importar catálogo desde CSV** |
 | Términos y privacidad | Textos modelo en `/terminos` y `/privacidad` (completar datos de la vinoteca y validarlos) |
 
 **Stack:** React + Vite + TypeScript + Tailwind, PWA, Vercel. Se instala desde el navegador, sin pasar por las tiendas de apps.
@@ -57,8 +58,11 @@ Todo el acceso a datos está en `src/lib/api.ts`. Para tener datos compartidos e
 
 En `supabase/` quedó un esquema inicial de Supabase (tablas, permisos y fotos). Antes de usarlo hay que pasarle las reglas que hoy tiene la demo: un voto por socio en el ranking, promedio ponderado, mes en hora de Argentina, límite de largo del nombre, socios sin `image_url` en vinos externos e índices. Para el login real conviene el código de 6 números por mail (el link no funciona bien con la app instalada en iPhone) y un SMTP propio.
 
+## Tarjeta de socio y puntos
+El QR solo lleva el número de socio (ej. `EA001001`), así la caja lo puede leer con cualquier lector y buscar al cliente. Las reglas de ejemplo están en `POINTS_RULES` (`src/lib/seed.ts`): 50 puntos de bienvenida, 1 punto cada $1.000 y beneficios a los 100, 250 y 500 puntos. Al conectar Nexus hay que acordar el formato del QR y que Nexus informe los movimientos de puntos; la pantalla no cambia.
+
 ## Etapa 2 (ideas ya conversadas)
-- Conexión con Nexus (sincronizar catálogo, precio y stock por código).
+- Conexión con Nexus (sincronizar catálogo, precio y stock por código, y puntos de la tarjeta de socio).
 - Ingreso con código por WhatsApp.
 - Eventos y catas con confirmación de asistencia y puntaje de los vinos de la cata.
 - Insignias ("probó 10 malbecs", "explorador de 5 bodegas").

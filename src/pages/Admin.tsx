@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/auth'
 import {
+  addPurchase,
   getClubSettings,
   getCommentById,
   getHiddenContent,
@@ -44,6 +45,9 @@ export default function Admin() {
   const [editing, setEditing] = useState<Partial<Wine> | null>(null)
   const [wineError, setWineError] = useState('')
   const [importMsg, setImportMsg] = useState('')
+  const [buyCode, setBuyCode] = useState('')
+  const [buyAmount, setBuyAmount] = useState('')
+  const [buyMsg, setBuyMsg] = useState('')
   const csvRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -176,6 +180,17 @@ export default function Admin() {
     if (csvRef.current) csvRef.current.value = ''
   }
 
+  const loadPurchase = (e: React.FormEvent) => {
+    e.preventDefault()
+    setBuyMsg('')
+    void attempt(async () => {
+      const r = await addPurchase(buyCode, Number(buyAmount))
+      setBuyMsg(`Se sumaron ${r.points} puntos a ${r.display_name}. Ahora tiene ${r.balance}.`)
+      setBuyCode('')
+      setBuyAmount('')
+    })
+  }
+
   function downloadTemplate() {
     const url = URL.createObjectURL(new Blob(['﻿' + CSV_TEMPLATE], { type: 'text/csv;charset=utf-8' }))
     const a = document.createElement('a')
@@ -224,6 +239,53 @@ export default function Admin() {
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="flex flex-col gap-3 rounded-2xl border border-linea bg-white p-4">
+          <div>
+            <h2 className="text-base font-medium">Cargar compra</h2>
+            <p className="mt-0.5 text-xs text-gris">
+              Demo: simula lo que va a hacer la caja con Nexus al escanear el QR de la tarjeta del socio.
+            </p>
+          </div>
+          <form onSubmit={loadPurchase} className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="buy-code" className="text-xs text-texto">
+                N.º de socio
+              </label>
+              <input
+                id="buy-code"
+                required
+                autoCapitalize="characters"
+                value={buyCode}
+                onChange={(e) => setBuyCode(e.target.value)}
+                placeholder="EA 001 001"
+                className="h-11 rounded-lg border border-borde px-3 text-sm uppercase"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="buy-amount" className="text-xs text-texto">
+                Monto ($)
+              </label>
+              <input
+                id="buy-amount"
+                required
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={buyAmount}
+                onChange={(e) => setBuyAmount(e.target.value)}
+                placeholder="18500"
+                className="h-11 rounded-lg border border-borde px-3 text-sm"
+              />
+            </div>
+            <button className="col-span-2 h-11 rounded-full bg-tinta text-sm font-medium text-white">Sumar puntos</button>
+          </form>
+          {buyMsg && (
+            <p className="text-xs text-ok" role="status">
+              {buyMsg}
+            </p>
+          )}
         </section>
 
         <section className="flex flex-col gap-3 rounded-2xl border border-linea bg-white p-4">

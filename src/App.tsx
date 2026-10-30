@@ -1,19 +1,45 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import AppLayout from './components/AppLayout'
 import { Loading } from './components/ui'
+import { FeedbackProvider } from './components/feedback'
 import Login from './pages/Login'
 import Feed from './pages/Feed'
 
-// El resto de las pantallas se descarga recién cuando se abre
-const Welcome = lazy(() => import('./pages/Welcome'))
-const Ranking = lazy(() => import('./pages/Ranking'))
-const Upload = lazy(() => import('./pages/Upload'))
-const WineDetail = lazy(() => import('./pages/WineDetail'))
-const Profile = lazy(() => import('./pages/Profile'))
-const Admin = lazy(() => import('./pages/Admin'))
-const Legal = lazy(() => import('./pages/Legal'))
+// El resto de las pantallas no viene en la carga inicial: se descargan en segundo plano después de entrar
+const pages = {
+  welcome: () => import('./pages/Welcome'),
+  ranking: () => import('./pages/Ranking'),
+  upload: () => import('./pages/Upload'),
+  wine: () => import('./pages/WineDetail'),
+  profile: () => import('./pages/Profile'),
+  card: () => import('./pages/MemberCard'),
+  admin: () => import('./pages/Admin'),
+  legal: () => import('./pages/Legal'),
+}
+const Welcome = lazy(pages.welcome)
+const Ranking = lazy(pages.ranking)
+const Upload = lazy(pages.upload)
+const WineDetail = lazy(pages.wine)
+const Profile = lazy(pages.profile)
+const MemberCard = lazy(pages.card)
+const Admin = lazy(pages.admin)
+const Legal = lazy(pages.legal)
+
+/** Precarga las pantallas cuando el celular está libre, así al tocarlas abren al instante */
+function usePrefetchPages(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return
+    const run = () => Object.values(pages).forEach((load) => void load().catch(() => undefined))
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(run, { timeout: 3000 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const t = setTimeout(run, 1500)
+    return () => clearTimeout(t)
+  }, [enabled])
+}
 
 function Club() {
   return (
@@ -24,6 +50,7 @@ function Club() {
         <Route path="subir" element={<Upload />} />
         <Route path="vino/:id" element={<WineDetail />} />
         <Route path="perfil" element={<Profile />} />
+        <Route path="tarjeta" element={<MemberCard />} />
         <Route path="admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
@@ -33,6 +60,7 @@ function Club() {
 
 function Gate() {
   const { profile } = useAuth()
+  usePrefetchPages(Boolean(profile))
   return (
     <Suspense fallback={<Loading />}>
       <Routes>
@@ -49,7 +77,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Gate />
+        <FeedbackProvider>
+          <Gate />
+        </FeedbackProvider>
       </AuthProvider>
     </BrowserRouter>
   )

@@ -1,8 +1,8 @@
 import { photoSrc } from './store'
 import type { Wine } from './types'
 
-/** WhatsApp de la vinoteca: solo números, con código de país */
-export const WHATSAPP_NUMBER = (import.meta.env.VITE_WHATSAPP_NUMBER as string | undefined)?.replace(/\D/g, '') ?? ''
+/** WhatsApp de la vinoteca (+54 9 3772 52-1783): solo números, con código de país. Se puede cambiar con VITE_WHATSAPP_NUMBER */
+export const WHATSAPP_NUMBER = ((import.meta.env.VITE_WHATSAPP_NUMBER as string | undefined) || '5493772521783').replace(/\D/g, '')
 
 const pesos = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
 

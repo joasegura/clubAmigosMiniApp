@@ -39,3 +39,43 @@ button, input, textarea, select {
 .pb-safe {
   padding-bottom: max(8px, env(safe-area-inset-bottom));
 }
+
+/* Altura real de la barra de navegación (la mide AppLayout, incluye el borde inferior del iPhone).
+   Las barras fijas se ubican encima de ella sin pisarla. */
+:root {
+  --nav-h: 0px;
+}
+
+@utility bottom-nav {
+  bottom: var(--nav-h);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes sheet-in {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+.toast-in { animation: toast-in 0.2s ease-out; }
+.sheet-in { animation: sheet-in 0.22s ease-out; }
+
+/* Esqueleto de carga: bloques grises que anticipan el contenido */
+.skeleton {
+  background: linear-gradient(90deg, var(--color-arena) 0%, #f6f0ec 50%, var(--color-arena) 100%);
+  background-size: 400px 100%;
+  animation: shimmer 1.2s linear infinite;
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-in, .sheet-in, .skeleton { animation: none; }
+}
