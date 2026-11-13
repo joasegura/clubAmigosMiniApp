@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getMostLoggedThisMonth, getRanking } from '../lib/api'
+import { getMostLoggedThisMonth, getRanking } from '../lib/backend'
+import { useClubUpdates } from '../lib/nexus/realtime'
 import { formatPrice, formatRating, wineSubtitle } from '../lib/format'
 import type { RankedWine } from '../lib/types'
 import { Chip, Empty, ErrorBox, Loading, PageHeader, WineThumb } from '../components/ui'
@@ -38,6 +39,7 @@ export default function Ranking() {
   useEffect(() => {
     void load()
   }, [])
+  useClubUpdates(() => void load())
 
   // Chips: las 3 cepas tintas con más vinos rankeados + "Blancos"
   const chips = useMemo(() => {

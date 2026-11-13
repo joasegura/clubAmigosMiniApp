@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../lib/auth'
-import { getMemberCard } from '../lib/api'
+import { FEATURES, getMemberCard } from '../lib/backend'
 import { memberSince, timeAgo } from '../lib/format'
 import { POINTS_RULES } from '../lib/seed'
 import type { MemberCard as Card } from '../lib/types'
@@ -33,7 +33,9 @@ export default function MemberCard() {
   if (error) return <ErrorBox message={error} onRetry={load} />
   if (!card) return <Loading />
 
-  const prev = [...POINTS_RULES.rewards].reverse().find((r) => r.points <= card.balance)
+  // Con Nexus los beneficios son los niveles reales del club; en la demo, las reglas de ejemplo
+  const rewards = card.rewards ?? POINTS_RULES.rewards
+  const prev = [...rewards].reverse().find((r) => r.points <= card.balance)
   const from = prev?.points ?? 0
   const progress = card.next_reward ? Math.min(100, ((card.balance - from) / (card.next_reward.points - from)) * 100) : 100
 
@@ -56,13 +58,27 @@ export default function MemberCard() {
             </span>
           </div>
 
-          <div className="rounded-2xl bg-white p-3">
-            <QrCode value={card.code} size={208} label={`Código QR de socio ${prettyCode(card.code)}`} />
-          </div>
+          {card.qr_pending ? (
+            <div className="flex min-h-[232px] w-[232px] flex-col items-center justify-center gap-2 rounded-2xl bg-white/10 p-5 text-center text-sm text-[#CFC6C1]">
+              <span>Tu QR todavía no está asignado. Pedilo en la vinoteca y aparece acá al instante.</span>
+              {card.member_ref && (
+                <span className="text-xs">
+                  Decile al vendedor tu número de cliente{' '}
+                  <b className="font-mono text-base font-semibold tracking-wider text-white">#{card.member_ref.customer_id}</b>
+                  {!card.member_ref.has_dni && <span className="block">y tu DNI, para completar tus datos.</span>}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-white p-3">
+              <QrCode value={card.code} size={208} label={`Código QR de socio ${prettyCode(card.code)}`} />
+            </div>
+          )}
 
           <div className="text-center leading-snug">
             <p className="text-lg font-medium">{card.display_name}</p>
-            <p className="font-mono text-[15px] tracking-[0.12em] text-[#CFC6C1]">{prettyCode(card.code)}</p>
+            {card.code && <p className="font-mono text-[15px] tracking-[0.12em] text-[#CFC6C1]">{prettyCode(card.code)}</p>}
+            {card.level_label && <p className="mt-1 text-sm font-medium text-[#F08A8F]">Nivel {card.level_label}</p>}
             <p className="mt-1 text-xs text-[#CFC6C1]">Socio desde {memberSince(card.created_at)}</p>
           </div>
         </section>
@@ -89,8 +105,10 @@ export default function MemberCard() {
                 <div className="h-full rounded-full bg-vino" style={{ width: `${progress}%` }} />
               </div>
               <p className="text-xs text-gris">
-                Te faltan <b className="font-medium text-tinta">{card.next_reward.points - card.balance} puntos</b>. Sumás 1 punto cada $
-                {POINTS_RULES.pesosPerPoint.toLocaleString('es-AR')} de compra.
+                Te faltan <b className="font-medium text-tinta">{card.next_reward.points - card.balance} puntos</b>.
+                {card.rewards
+                  ? ' Sumás puntos con cada compra en la vinoteca.'
+                  : ` Sumás 1 punto cada $${POINTS_RULES.pesosPerPoint.toLocaleString('es-AR')} de compra.`}
               </p>
             </>
           ) : (
@@ -101,7 +119,8 @@ export default function MemberCard() {
         <section className="flex flex-col gap-2.5">
           <h2 className="text-base font-medium">Beneficios</h2>
           <ul className="flex flex-col divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-white">
-            {POINTS_RULES.rewards.map((r) => {
+            {rewards.length === 0 && <li className="px-3.5 py-3 text-sm text-gris">La vinoteca todavía no cargó los beneficios.</li>}
+            {rewards.map((r) => {
               const reached = card.balance >= r.points
               return (
                 <li key={r.points} className="flex items-center gap-3 px-3.5 py-3">
@@ -121,7 +140,8 @@ export default function MemberCard() {
           </ul>
         </section>
 
-        <section className="flex flex-col gap-2.5">
+        {/* Nexus todavía no guarda el historial de puntos: la sección se muestra solo en la demo */}
+        <section hidden={!FEATURES.demoTools} className="flex flex-col gap-2.5">
           <h2 className="text-base font-medium">Últimos movimientos</h2>
           {card.movements.length === 0 ? (
             <p className="text-sm text-gris">Todavía no tenés movimientos.</p>
@@ -143,7 +163,7 @@ export default function MemberCard() {
           )}
         </section>
 
-        <p className="rounded-xl bg-crema p-3 text-xs leading-relaxed text-gris">
+        <p hidden={!FEATURES.demoTools} className="rounded-xl bg-crema p-3 text-xs leading-relaxed text-gris">
           Demo: los puntos, las reglas y los beneficios son de ejemplo. Cuando se conecte el sistema de la vinoteca (Nexus), la caja va a leer
           este QR y los puntos se van a sumar solos con cada compra.
         </p>

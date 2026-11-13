@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
-import { updateDisplayName } from '../lib/api'
+import { updateDisplayName } from '../lib/backend'
 
 /** Primer ingreso por mail: el socio elige cómo lo ven los demás */
 export default function Welcome() {

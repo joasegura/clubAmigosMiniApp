@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { getMemberCard, getUserTastings, getWishlist, updateDisplayName } from '../lib/api'
+import { FEATURES, getMemberCard, getUserTastings, getWishlist, updateDisplayName } from '../lib/backend'
 import { resetStore } from '../lib/store'
 import { formatPrice, memberSince, wineSubtitle } from '../lib/format'
 import type { FeedItem, Wine } from '../lib/types'
@@ -248,7 +248,7 @@ export default function Profile() {
             Privacidad
           </Link>
         </div>
-        {confirmReset ? (
+        {!FEATURES.demoTools ? null : confirmReset ? (
           <div className="flex w-full flex-col gap-2 rounded-xl border border-vino/30 bg-white p-3 text-center">
             <p className="text-texto">Se borra todo lo cargado en este dispositivo y vuelven los datos de ejemplo.</p>
             <div className="flex gap-2">

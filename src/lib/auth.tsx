@@ -1,5 +1,16 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
-import { getCurrentProfile, signInAsShop, signInDemo, signOutDemo } from './api'
+import {
+  getCurrentProfile,
+  NEXUS_ENABLED,
+  nexusRegister,
+  nexusSendCode,
+  nexusSignInWithGoogle,
+  nexusVerifyCode,
+  signInAsShop,
+  signInDemo,
+  signOutDemo,
+} from './backend'
+import type { NxRegisterInput } from './nexus/dto'
 import type { Profile } from './types'
 
 /**
@@ -17,6 +28,12 @@ interface AuthState {
   verifyCode: (email: string, code: string) => Promise<void>
   signInAsShop: () => Promise<void>
   signOut: () => Promise<void>
+  /** Modo Nexus: pide el código para un DNI. Devuelve el mail (ofuscado) al que se envió */
+  requestDniCode: (documentNumber: string) => Promise<string>
+  /** Modo Nexus: alta de un cliente nuevo + envío del código. Devuelve el mail (ofuscado) */
+  registerMember: (input: NxRegisterInput) => Promise<string>
+  /** Modo Nexus: valida el código y guarda la sesión firmada por Nexus */
+  verifyDniCode: (documentNumber: string, code: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -32,6 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAdmin: profile?.role === 'admin',
     refreshProfile,
     signInWithGoogle: async () => {
+      if (NEXUS_ENABLED) {
+        // Google real (Firebase) validado por Nexus. null = el socio cerró la ventana: no es error
+        const nexusProfile = await nexusSignInWithGoogle()
+        if (nexusProfile) setProfile(nexusProfile)
+        return
+      }
       setProfile(await signInDemo('socio.demo@gmail.com', 'Socio Demo'))
     },
     sendCode: async (email: string) => {
@@ -54,6 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut: async () => {
       await signOutDemo()
       setProfile(null)
+    },
+    requestDniCode: async (documentNumber: string) => (await nexusSendCode(documentNumber)).email,
+    registerMember: async (input: NxRegisterInput) => (await nexusRegister(input)).email,
+    verifyDniCode: async (documentNumber: string, code: string) => {
+      setProfile(await nexusVerifyCode(documentNumber, code))
     },
   }
 

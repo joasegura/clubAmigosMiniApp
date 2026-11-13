@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { getMyCheers, getWine, getWineSummary, getWineTastings, isInWishlist, logWantClick, setWishlist } from '../lib/api'
+import { getMyCheers, getWine, getWineSummary, getWineTastings, isInWishlist, logWantClick, setWishlist } from '../lib/backend'
+import { useClubUpdates } from '../lib/nexus/realtime'
 import { formatPrice, formatRating, photoUrl, whatsappLink } from '../lib/format'
 import type { FeedItem, Wine, WineSummary } from '../lib/types'
 import TastingCard from '../components/TastingCard'
@@ -40,6 +41,7 @@ export default function WineDetail() {
   useEffect(() => {
     void load()
   }, [load])
+  useClubUpdates(() => void load())
 
   async function toggleSaved() {
     if (!profileId) return
