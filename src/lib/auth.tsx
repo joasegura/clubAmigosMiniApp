@@ -1,5 +1,15 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
-import { getCurrentProfile, nexusRegister, nexusSendCode, nexusVerifyCode, signInAsShop, signInDemo, signOutDemo } from './backend'
+import {
+  getCurrentProfile,
+  NEXUS_ENABLED,
+  nexusRegister,
+  nexusSendCode,
+  nexusSignInWithGoogle,
+  nexusVerifyCode,
+  signInAsShop,
+  signInDemo,
+  signOutDemo,
+} from './backend'
 import type { NxRegisterInput } from './nexus/dto'
 import type { Profile } from './types'
 
@@ -39,6 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAdmin: profile?.role === 'admin',
     refreshProfile,
     signInWithGoogle: async () => {
+      if (NEXUS_ENABLED) {
+        // Google real (Firebase) validado por Nexus. null = el socio cerró la ventana: no es error
+        const nexusProfile = await nexusSignInWithGoogle()
+        if (nexusProfile) setProfile(nexusProfile)
+        return
+      }
       setProfile(await signInDemo('socio.demo@gmail.com', 'Socio Demo'))
     },
     sendCode: async (email: string) => {

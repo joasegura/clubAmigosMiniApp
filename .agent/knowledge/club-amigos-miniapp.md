@@ -40,6 +40,21 @@
 2. Vercel (miniapp): `VITE_NEXUS_API_URL` (con `/api`) y `VITE_NEXUS_CATALOG_SLUG`. `vercel.json` ya permite `api-nexus.atomsolucionesit.com.ar` en `connect-src`; si cambia el dominio, actualizarlo.
 3. Nexus: catálogo público con `isClubActive`, Club Amigos activo (`ClubConfig.isActive`), niveles cargados y QRs asignados.
 
+## Ingreso
+- **Google (Firebase)**:
+  - `src/lib/nexus/firebase.ts` carga el SDK de forma diferida (chunk aparte de ~128 KB), abre el popup, obtiene el ID token y cierra la sesión de Firebase.
+  - Nexus valida el token y emite su `sessionToken`. **No pide DNI**: si el mail no existe en la vinoteca, Nexus crea el cliente.
+  - Cerrar el popup no se trata como error (devuelve null).
+  - Variables `VITE_FIREBASE_API_KEY/AUTH_DOMAIN/PROJECT_ID/APP_ID`, copiadas de `atom-crm-front/.env`. Sin ellas, el botón no aparece.
+  - CSP (`vercel.json`):
+    - `script-src https://apis.google.com`
+    - `connect-src` identitytoolkit, securetoken y googleapis
+    - `frame-src https://*.firebaseapp.com https://accounts.google.com`
+  - Firebase Console: proveedor Google habilitado, y el dominio de Vercel en *Authorized domains* (`localhost` ya viene autorizado).
+  - PWA instalada en iPhone: el popup puede fallar en modo standalone. Si pasa, el socio puede usar DNI o abrir la app en Safari.
+- **DNI + código por mail**: igual que antes.
+- **Mi tarjeta sin QR**: muestra `#<Customer.id>` (y pide el DNI si falta), para que el vendedor lo encuentre y le asigne el QR.
+
 ## Fuera de esta etapa (ocultos con FEATURES)
 Fotos, brindis, comentarios en hilo, reportes, vinos externos, ocasión, panel de la vinoteca dentro de la app e historial de puntos.
 

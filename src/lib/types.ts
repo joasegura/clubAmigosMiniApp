@@ -120,6 +120,8 @@ export interface MemberCard {
   level_label?: string | null
   /** true cuando la vinoteca todavía no le asignó un QR en Nexus (code viene vacío) */
   qr_pending?: boolean
+  /** Número de cliente en Nexus y mail: para que el vendedor lo encuentre y le asigne DNI y QR */
+  member_ref?: { customer_id: string; email: string | null; has_dni: boolean }
 }
 
 export interface WeekStats {

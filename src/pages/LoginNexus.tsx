@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { GOOGLE_LOGIN_ENABLED } from '../lib/backend'
 import { NexusError } from '../lib/nexus/client'
+import { GoogleLogo } from '../components/Icons'
 
 type Step = 'dni' | 'registro' | 'codigo'
 
@@ -10,7 +12,7 @@ const primaryButton = 'h-13 rounded-full bg-vino text-base font-medium text-whit
 
 /** Ingreso al club conectado a Nexus: DNI → código por mail (alta si el DNI no está registrado) */
 export default function LoginNexus() {
-  const { requestDniCode, registerMember, verifyDniCode } = useAuth()
+  const { requestDniCode, registerMember, verifyDniCode, signInWithGoogle } = useAuth()
   const [step, setStep] = useState<Step>('dni')
   const [dni, setDni] = useState('')
   const [code, setCode] = useState('')
@@ -77,6 +79,24 @@ export default function LoginNexus() {
       </div>
 
       <div className="flex flex-col gap-3.5 px-6 pb-8 pt-7">
+        {step === 'dni' && GOOGLE_LOGIN_ENABLED && (
+          <>
+            {/* Google no pide DNI: si el mail no está en la vinoteca se crea el cliente y el vendedor completa el DNI después */}
+            <button
+              type="button"
+              onClick={() => void run(signInWithGoogle)}
+              disabled={busy}
+              className="flex h-13 items-center justify-center gap-2.5 rounded-full border border-borde bg-white text-[15px] font-medium active:bg-crema disabled:opacity-60"
+            >
+              <GoogleLogo />
+              {busy ? 'Ingresando…' : 'Continuar con Google'}
+            </button>
+            <div className="flex items-center gap-3 text-[13px] text-gris">
+              <span className="h-px flex-1 bg-linea" />o con tu DNI<span className="h-px flex-1 bg-linea" />
+            </div>
+          </>
+        )}
+
         {step === 'dni' && (
           <form onSubmit={askCode} className="flex flex-col gap-3.5">
             <div className="flex flex-col gap-1.5">

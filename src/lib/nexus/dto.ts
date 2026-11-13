@@ -94,6 +94,14 @@ export interface NxVerifyResponse {
   }
 }
 
+/** POST club-app/:slug/auth/google */
+export interface NxGoogleLoginResponse {
+  sessionToken: string
+  /** true si Nexus creó el cliente en este ingreso */
+  created: boolean
+  me: NxMe
+}
+
 export interface NxRegisterInput {
   documentNumber: string
   name: string

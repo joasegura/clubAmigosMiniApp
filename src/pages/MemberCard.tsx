@@ -59,8 +59,15 @@ export default function MemberCard() {
           </div>
 
           {card.qr_pending ? (
-            <div className="flex h-[232px] w-[232px] items-center justify-center rounded-2xl bg-white/10 p-5 text-center text-sm text-[#CFC6C1]">
-              Tu QR todavía no está asignado. Pedilo en la vinoteca y aparece acá al instante.
+            <div className="flex min-h-[232px] w-[232px] flex-col items-center justify-center gap-2 rounded-2xl bg-white/10 p-5 text-center text-sm text-[#CFC6C1]">
+              <span>Tu QR todavía no está asignado. Pedilo en la vinoteca y aparece acá al instante.</span>
+              {card.member_ref && (
+                <span className="text-xs">
+                  Decile al vendedor tu número de cliente{' '}
+                  <b className="font-mono text-base font-semibold tracking-wider text-white">#{card.member_ref.customer_id}</b>
+                  {!card.member_ref.has_dni && <span className="block">y tu DNI, para completar tus datos.</span>}
+                </span>
+              )}
             </div>
           ) : (
             <div className="rounded-2xl bg-white p-3">

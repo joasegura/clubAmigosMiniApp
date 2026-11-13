@@ -79,5 +79,6 @@ export const {
   setWineOfMonth,
 } = impl
 
-/** Ingreso con DNI (solo modo Nexus) */
-export const { nexusSendCode, nexusRegister, nexusVerifyCode } = nexus
+/** Ingreso con DNI o con Google (solo modo Nexus) */
+export const { nexusSendCode, nexusRegister, nexusVerifyCode, nexusSignInWithGoogle } = nexus
+export { GOOGLE_LOGIN_ENABLED } from './nexus/firebase'

@@ -12,7 +12,9 @@
  * reportes, vinos externos y panel de la vinoteca (se administra desde Nexus).
  */
 import { authPath, clubPath, loadSession, nexusRequest, NexusError, saveSession, updateStoredProfile } from './nexus/client'
+import { getGoogleIdToken } from './nexus/firebase'
 import type {
+  NxGoogleLoginResponse,
   NxHighlights,
   NxMe,
   NxPaginated,
@@ -162,6 +164,21 @@ export async function nexusVerifyCode(documentNumber: string, code: string): Pro
   const me = await nexusRequest<NxMe>('GET', clubPath('/me'), { auth: true })
   const profile = toProfile(me)
   updateStoredProfile(profile)
+  return profile
+}
+
+/**
+ * Ingreso con Google: Firebase da el ID token y Nexus lo valida. Si el mail no existe en la
+ * vinoteca, Nexus crea el cliente sin DNI (el vendedor se lo completa para asignarle el QR).
+ * Devuelve null si el socio cerró la ventana de Google.
+ */
+export async function nexusSignInWithGoogle(): Promise<Profile | null> {
+  const idToken = await getGoogleIdToken()
+  if (!idToken) return null
+  const res = await nexusRequest<NxGoogleLoginResponse>('POST', clubPath('/auth/google'), { body: { idToken } })
+  if (!res.sessionToken) throw new Error('Nexus no devolvió la sesión. Avisale a la vinoteca.')
+  const profile = toProfile(res.me)
+  saveSession({ token: res.sessionToken, profile })
   return profile
 }
 
@@ -408,6 +425,11 @@ export async function getMemberCard(userId: string): Promise<MemberCard> {
     next_reward: card.nextLevel ? { points: card.nextLevel.pointsRequired, label: levelLabel(card.nextLevel) } : null,
     rewards: card.levels.map((l) => ({ points: l.pointsRequired, label: levelLabel(l) })),
     level_label: card.level ? levelLabel(card.level) : null,
+    member_ref: {
+      customer_id: String(me.profile.id),
+      email: me.profile.email,
+      has_dni: Boolean(me.profile.documentNumber),
+    },
   }
 }
 
