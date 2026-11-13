@@ -58,6 +58,16 @@ Todo el acceso a datos está en `src/lib/api.ts`. Para tener datos compartidos e
 
 En `supabase/` quedó un esquema inicial de Supabase (tablas, permisos y fotos). Antes de usarlo hay que pasarle las reglas que hoy tiene la demo: un voto por socio en el ranking, promedio ponderado, mes en hora de Argentina, límite de largo del nombre, socios sin `image_url` en vinos externos e índices. Para el login real conviene el código de 6 números por mail (el link no funciona bien con la app instalada en iPhone) y un SMTP propio.
 
+## Modo Nexus (datos reales)
+Con `VITE_NEXUS_API_URL` y `VITE_NEXUS_CATALOG_SLUG` configuradas, la app deja de usar la demo y trabaja contra Nexus:
+- **Catálogo en tiempo real**: los vinos del catálogo público que la vinoteca arma en Nexus, con precio y stock. Se actualiza solo (socket).
+- **Ingreso**: DNI + código por mail. Si el DNI no está registrado, el socio se da de alta y queda en el club.
+- **Valorar y comentar**: 1 a 5 copas + comentario. Cuenta un voto por socio y vino (el último). La vinoteca los ve y los modera en Nexus → Productos → Valoraciones.
+- **Mi tarjeta**: el QR que la vinoteca le asignó en Nexus, sus puntos y los niveles reales del club.
+- **Quiero probar**, ranking, vino del mes (producto "destacado" en Nexus) y el más tomado del mes.
+
+Fotos, brindis, comentarios en hilo, reportes y vinos externos siguen solo en la demo (ver `FEATURES` en `src/lib/backend.ts`). Sin esas variables, la app sigue siendo la demo de siempre.
+
 ## Tarjeta de socio y puntos
 El QR solo lleva el número de socio (ej. `EA001001`), así la caja lo puede leer con cualquier lector y buscar al cliente. Las reglas de ejemplo están en `POINTS_RULES` (`src/lib/seed.ts`): 50 puntos de bienvenida, 1 punto cada $1.000 y beneficios a los 100, 250 y 500 puntos. Al conectar Nexus hay que acordar el formato del QR y que Nexus informe los movimientos de puntos; la pantalla no cambia.
 

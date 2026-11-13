@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { addComment, deleteComment, deleteTasting, getComments, reportContent, setCheer } from '../lib/api'
+import { addComment, deleteComment, deleteTasting, FEATURES, getComments, reportContent, setCheer } from '../lib/backend'
 import { RATING_LABELS, timeAgo, wineSubtitle } from '../lib/format'
 import type { Comment, FeedItem } from '../lib/types'
 import { Avatar, Copas, WineThumb } from './ui'
@@ -88,7 +88,9 @@ export default function TastingCard({ item, cheered, onCheerChange, onDeleted, s
     setMenu(false)
     const ok = await confirm({
       title: '¿Borrar esta publicación?',
-      message: 'Se borran también la foto, los brindis y los comentarios.',
+      message: FEATURES.photos
+        ? 'Se borran también la foto, los brindis y los comentarios.'
+        : 'Tu puntaje deja de contar para el ranking del club.',
       confirmLabel: 'Borrar',
       danger: true,
     })
@@ -120,9 +122,11 @@ export default function TastingCard({ item, cheered, onCheerChange, onDeleted, s
             {item.occasion ? ` · ${item.occasion}` : ''}
           </p>
         </div>
-        <button aria-label="Opciones" aria-expanded={menu} onClick={() => setMenu((m) => !m)} className="flex h-10 w-10 items-center justify-center rounded-full text-gris active:bg-crema">
-          <IconMore />
-        </button>
+        {(mine || FEATURES.reports) && (
+          <button aria-label="Opciones" aria-expanded={menu} onClick={() => setMenu((m) => !m)} className="flex h-10 w-10 items-center justify-center rounded-full text-gris active:bg-crema">
+            <IconMore />
+          </button>
+        )}
         {menu && <button aria-label="Cerrar menú" tabIndex={-1} onClick={() => setMenu(false)} className="fixed inset-0 z-10 cursor-default" />}
         {menu && (
           <div className="sheet-in absolute right-3 top-12 z-20 w-52 overflow-hidden rounded-xl border border-linea bg-white text-sm shadow-lg">
@@ -176,20 +180,26 @@ export default function TastingCard({ item, cheered, onCheerChange, onDeleted, s
           </p>
         )}
 
-        <div className="-mx-2 flex gap-1 text-[13px]">
-          <button
-            onClick={toggleCheer}
-            aria-pressed={isCheered}
-            className={`flex h-10 items-center gap-1.5 rounded-full px-2.5 transition-colors active:bg-crema ${isCheered ? 'font-medium text-vino' : 'text-gris'}`}
-          >
-            <IconGlass size={18} filled={isCheered} />
-            {cheerCount > 0 ? `${cheerCount} brindis` : 'Brindar'}
-          </button>
-          <button onClick={toggleComments} aria-expanded={open} className="flex h-10 items-center gap-1.5 rounded-full px-2.5 text-gris active:bg-crema">
-            <IconChat size={18} />
-            {commentCount > 0 ? `${commentCount} ${commentCount === 1 ? 'comentario' : 'comentarios'}` : 'Comentar'}
-          </button>
-        </div>
+        {(FEATURES.cheers || FEATURES.threadComments) && (
+          <div className="-mx-2 flex gap-1 text-[13px]">
+            {FEATURES.cheers && (
+              <button
+                onClick={toggleCheer}
+                aria-pressed={isCheered}
+                className={`flex h-10 items-center gap-1.5 rounded-full px-2.5 transition-colors active:bg-crema ${isCheered ? 'font-medium text-vino' : 'text-gris'}`}
+              >
+                <IconGlass size={18} filled={isCheered} />
+                {cheerCount > 0 ? `${cheerCount} brindis` : 'Brindar'}
+              </button>
+            )}
+            {FEATURES.threadComments && (
+              <button onClick={toggleComments} aria-expanded={open} className="flex h-10 items-center gap-1.5 rounded-full px-2.5 text-gris active:bg-crema">
+                <IconChat size={18} />
+                {commentCount > 0 ? `${commentCount} ${commentCount === 1 ? 'comentario' : 'comentarios'}` : 'Comentar'}
+              </button>
+            )}
+          </div>
+        )}
 
         {open && (
           <div className="flex flex-col gap-3 border-t border-linea pb-2 pt-3">

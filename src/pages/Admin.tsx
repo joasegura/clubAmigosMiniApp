@@ -14,7 +14,7 @@ import {
   saveCatalogWine,
   setWineOfMonth,
   uploadPhoto,
-} from '../lib/api'
+} from '../lib/backend'
 import { CSV_TEMPLATE } from '../lib/csv'
 import { formatPrice, photoUrl, WHATSAPP_NUMBER, wineSubtitle } from '../lib/format'
 import type { Comment, FeedItem, WeekStats, Wine } from '../lib/types'

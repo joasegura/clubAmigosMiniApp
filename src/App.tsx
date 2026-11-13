@@ -5,7 +5,9 @@ import AppLayout from './components/AppLayout'
 import { Loading } from './components/ui'
 import { FeedbackProvider } from './components/feedback'
 import Login from './pages/Login'
+import LoginNexus from './pages/LoginNexus'
 import Feed from './pages/Feed'
+import { NEXUS_ENABLED } from './lib/backend'
 
 // El resto de las pantallas no viene en la carga inicial: se descargan en segundo plano después de entrar
 const pages = {
@@ -67,7 +69,10 @@ function Gate() {
         {/* Términos y privacidad se pueden leer sin ingresar */}
         <Route path="terminos" element={<Legal kind="terminos" />} />
         <Route path="privacidad" element={<Legal kind="privacidad" />} />
-        <Route path="*" element={!profile ? <Login /> : !profile.display_name ? <Welcome /> : <Club />} />
+        <Route
+          path="*"
+          element={!profile ? NEXUS_ENABLED ? <LoginNexus /> : <Login /> : !profile.display_name ? <Welcome /> : <Club />}
+        />
       </Routes>
     </Suspense>
   )

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { getFeed, getMemberCard, getMyCheers, getWineOfMonth, logWantClick } from '../lib/api'
+import { getFeed, getMemberCard, getMyCheers, getWineOfMonth, logWantClick } from '../lib/backend'
+import { useClubUpdates } from '../lib/nexus/realtime'
 import { formatPrice, whatsappLink, wineSubtitle } from '../lib/format'
 import type { FeedItem, Wine } from '../lib/types'
 import TastingCard from '../components/TastingCard'
@@ -73,6 +74,9 @@ export default function Feed() {
     },
     [profileId],
   )
+
+  // Nexus avisa cuando un socio valora o cambia el catálogo: recargar las páginas ya vistas
+  useClubUpdates(() => void load(pageRef.current))
 
   useEffect(() => {
     const restore = skipRestore.current ? null : saved

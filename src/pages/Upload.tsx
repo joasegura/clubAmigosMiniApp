@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { createExternalWine, createTasting, getMyLastRating, getRanking, getWine, searchCatalog, uploadPhoto } from '../lib/api'
+import { createExternalWine, createTasting, FEATURES, getMyLastRating, getRanking, getWine, searchCatalog, uploadPhoto } from '../lib/backend'
 import { OCCASIONS, RATING_LABELS, wineSubtitle } from '../lib/format'
 import type { Wine } from '../lib/types'
 import { Chip, CopasInput, WineThumb } from '../components/ui'
@@ -205,15 +205,17 @@ export default function Upload() {
                 ))}
                 {results?.length === 0 && <li className="px-3 py-3 text-sm text-gris">No encontramos ese vino en el catálogo.</li>}
               </ul>
-              <button onClick={() => setExternal(true)} className="self-start text-[13px] text-vino underline">
-                ¿No está? Cargalo como vino externo
-              </button>
+              {FEATURES.externalWines && (
+                <button onClick={() => setExternal(true)} className="self-start text-[13px] text-vino underline">
+                  ¿No está? Cargalo como vino externo
+                </button>
+              )}
             </>
           )}
         </section>
 
         {/* 2. Foto */}
-        <section>
+        <section hidden={!FEATURES.photos}>
           <input
             ref={fileRef}
             type="file"
@@ -278,7 +280,7 @@ export default function Upload() {
         </section>
 
         {/* 5. Ocasión */}
-        <section className="flex flex-col gap-2">
+        <section hidden={!FEATURES.occasions} className="flex flex-col gap-2">
           <span className="text-[13px] font-medium text-texto">Ocasión (opcional)</span>
           <div className="flex flex-wrap gap-2">
             {OCCASIONS.map((o) => (

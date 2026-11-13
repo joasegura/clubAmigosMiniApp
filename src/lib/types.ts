@@ -114,6 +114,12 @@ export interface MemberCard {
   movements: PointsMovement[]
   /** Próximo beneficio que todavía no alcanzó (null si ya llegó al último) */
   next_reward: Reward | null
+  /** Beneficios reales del club (niveles de Nexus). Si no viene, se usan las reglas de ejemplo */
+  rewards?: Reward[]
+  /** Nivel actual del socio en Nexus (ej. "Oro · 10% de descuento") */
+  level_label?: string | null
+  /** true cuando la vinoteca todavía no le asignó un QR en Nexus (code viene vacío) */
+  qr_pending?: boolean
 }
 
 export interface WeekStats {
